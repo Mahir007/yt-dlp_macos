@@ -173,8 +173,9 @@ configure_homebrew() {
     
     # Always export for current session
     export HOMEBREW_NO_ENV_HINTS=1
+    export HOMEBREW_NO_ASK=1
     
-    # Add it permanently to ~/.zshrc
+    # Add NO_ENV_HINTS permanently to ~/.zshrc
     local zshrc_file="$HOME/.zshrc"
     if grep -q "HOMEBREW_NO_ENV_HINTS" "$zshrc_file" 2>/dev/null; then
         print_info "HOMEBREW_NO_ENV_HINTS is already configured in $zshrc_file"
@@ -233,43 +234,53 @@ configure_macports() {
     fi
 }
 
+# Function to detect the installed MacPorts python3 version port name (e.g. python313, python314)
+detect_macports_python_version() {
+    port installed 2>/dev/null | grep -oE "python3[0-9][0-9]" | sed 's/^python3//' | sort -rn | head -1 | sed 's/^/python3/'
+}
+
 # Function to configure MacPorts Python selection
 configure_macports_python() {
-    # Check if python313 is installed via MacPorts
-    if ! package_installed "python313"; then
+    # Dynamically detect which python3.x version is installed via MacPorts
+    local py_port
+    py_port=$(detect_macports_python_version)
+
+    if [ -z "$py_port" ]; then
         return 0
     fi
-    
-    print_info "Configuring MacPorts Python selection..."
-    
-    # Set python and python3 to python313
-    if sudo port select --set python python313 >/dev/null 2>&1; then
-        print_success "Set python to python313"
+
+    print_info "Configuring MacPorts Python selection (detected $py_port)..."
+
+    # Set python and python3 to the detected version
+    if sudo port select --set python "$py_port" >/dev/null 2>&1; then
+        print_success "Set python to $py_port"
     else
-        print_error "Failed to set python to python313"
+        print_error "Failed to set python to $py_port"
     fi
-    
-    if sudo port select --set python3 python313 >/dev/null 2>&1; then
-        print_success "Set python3 to python313"
+
+    if sudo port select --set python3 "$py_port" >/dev/null 2>&1; then
+        print_success "Set python3 to $py_port"
     else
-        print_error "Failed to set python3 to python313"
+        print_error "Failed to set python3 to $py_port"
     fi
-    
-    # Set pip and pip3 to pip313 (if py-pip is installed)
+
+    # Set pip and pip3 to the matching version (if py-pip is installed)
     if package_installed "py-pip"; then
-        if sudo port select --set pip pip313 >/dev/null 2>&1; then
-            print_success "Set pip to pip313"
+        local pip_port="pip${py_port#python}"
+
+        if sudo port select --set pip "$pip_port" >/dev/null 2>&1; then
+            print_success "Set pip to $pip_port"
         else
-            print_error "Failed to set pip to pip313"
+            print_error "Failed to set pip to $pip_port"
         fi
-        
-        if sudo port select --set pip3 pip313 >/dev/null 2>&1; then
-            print_success "Set pip3 to pip313"
+
+        if sudo port select --set pip3 "$pip_port" >/dev/null 2>&1; then
+            print_success "Set pip3 to $pip_port"
         else
-            print_error "Failed to set pip3 to pip313"
+            print_error "Failed to set pip3 to $pip_port"
         fi
     fi
-    
+
     # Refresh command cache to use new python/pip commands immediately
     hash -r 2>/dev/null || true
 }
@@ -282,7 +293,7 @@ get_system_packages() {
     if [ "$pm" = "homebrew" ]; then
         packages="bash ffmpeg atomicparsley python3 deno"
     elif [ "$pm" = "macports" ]; then
-        packages="ffmpeg8 py-pip deno"
+        packages="ffmpeg py-pip deno"
     fi
     
     echo "$packages"
@@ -408,7 +419,7 @@ configure_homebrew_pip() {
 check_and_install_pip_packages() {
     # Install package manager-specific Python packages
     if [ "$PACKAGE_MANAGER" = "homebrew" ]; then
-        local packages="websockets requests mutagen pycryptodomex"
+        local packages="websockets requests mutagen pycryptodomex curl-cffi yt-dlp-ejs"
         for package in $packages; do
             if pip3_package_installed "$package"; then
                 print_success "$package is already installed"
@@ -418,7 +429,7 @@ check_and_install_pip_packages() {
             fi
         done
     elif [ "$PACKAGE_MANAGER" = "macports" ]; then
-        local packages="py-websockets py-requests py-mutagen py-pycryptodomex"
+        local packages="py-websockets py-requests py-mutagen py-pycryptodomex py-curl-cffi yt-dlp-ejs"
         for package in $packages; do
             if package_installed "$package"; then
                 print_success "$package is already installed"
@@ -428,16 +439,6 @@ check_and_install_pip_packages() {
             fi
         done
     fi
-    
-    # Install pip packages for both package managers
-    for package in curl-cffi yt-dlp-ejs; do
-        if pip3_package_installed "$package"; then
-            print_success "$package is already installed"
-            echo ""
-        else
-            install_pip3_package "$package" || true
-        fi
-    done
 }
 
 # ============================================================================
@@ -563,7 +564,7 @@ uninstall_macports_packages() {
     
     # Uninstall MacPorts Python packages first (in reverse installation order)
     # These are installed as system packages, not pip packages
-    local python_packages="py-pycryptodomex py-mutagen py-requests py-websockets"
+    local python_packages="yt-dlp-ejs py-curl-cffi py-pycryptodomex py-mutagen py-requests py-websockets"
     for package in $python_packages; do
         uninstall_macports_package "$package"
     done
@@ -601,8 +602,6 @@ uninstall_pip_packages_selective() {
     local packages=""
     if [ "$PACKAGE_MANAGER" = "homebrew" ]; then
         packages="yt-dlp-ejs curl-cffi pycryptodomex mutagen requests websockets"
-    elif [ "$PACKAGE_MANAGER" = "macports" ]; then
-        packages="yt-dlp-ejs curl-cffi"
     fi
     
     # Uninstall each package (in reverse order)
@@ -636,8 +635,6 @@ uninstall_pip_packages() {
     local packages=""
     if [ "$PACKAGE_MANAGER" = "homebrew" ]; then
         packages="yt-dlp-ejs curl-cffi pycryptodomex mutagen requests websockets"
-    elif [ "$PACKAGE_MANAGER" = "macports" ]; then
-        packages="yt-dlp-ejs curl-cffi"
     fi
     
     # Try to install pip-autoremove if not present (for better dependency handling)
@@ -1154,148 +1151,6 @@ cleanup_path_config() {
     echo ""
 }
 
-# Function to cleanup yt-dlp configuration
-cleanup_ytdlp_config() {
-    print_info "Cleaning up yt-dlp configuration..."
-    
-    local config_home="${XDG_CONFIG_HOME:-$HOME/.config}"
-    local ytdlp_config_file="${config_home}/yt-dlp/config"
-    
-    if [ -f "$ytdlp_config_file" ]; then
-        # Exact lines we added during installation
-        local expected_comment="# Enable MacPorts version of FFMPEG"
-        local expected_ffmpeg_line=" --ffmpeg-location /opt/local/bin/ffmpeg8"
-        
-        # Check if file contains our configuration
-        if grep -qF "$expected_comment" "$ytdlp_config_file" 2>/dev/null || \
-           grep -qF "$expected_ffmpeg_line" "$ytdlp_config_file" 2>/dev/null; then
-            # Read all lines into an array (bash-3.2 compatible)
-            local lines_array=()
-            while IFS= read -r line || [ -n "$line" ]; do
-                lines_array+=("$line")
-            done < "$ytdlp_config_file"
-            
-            # Mark lines to skip (0 = keep, 1 = skip)
-            local skip_array=()
-            local i=0
-            local array_size=${#lines_array[@]}
-            
-            # Initialize skip array
-            while [ $i -lt $array_size ]; do
-                skip_array+=("0")
-                i=$((i + 1))
-            done
-            
-            # Mark lines to skip
-            i=0
-            local removed=false
-            while [ $i -lt $array_size ]; do
-                local line="${lines_array[$i]}"
-                
-                # Check if this is our comment line
-                if [ "$line" = "$expected_comment" ]; then
-                    removed=true
-                    # Mark comment line to skip
-                    skip_array[$i]="1"
-                    
-                    # Check if next line is our ffmpeg line and mark it to skip
-                    local next_i=$((i + 1))
-                    if [ $next_i -lt $array_size ]; then
-                        local next_line="${lines_array[$next_i]}"
-                        if [ "$next_line" = "$expected_ffmpeg_line" ]; then
-                            skip_array[$next_i]="1"
-                        fi
-                    fi
-                # Also check for standalone ffmpeg line (in case comment was removed manually)
-                elif [ "$line" = "$expected_ffmpeg_line" ]; then
-                    removed=true
-                    skip_array[$i]="1"
-                fi
-                
-                i=$((i + 1))
-            done
-            
-            # Write lines that are not marked to skip
-            local temp_file="${ytdlp_config_file}.tmp"
-            > "$temp_file"  # Create empty temp file
-            
-            i=0
-            while [ $i -lt $array_size ]; do
-                if [ "${skip_array[$i]}" != "1" ]; then
-                    echo "${lines_array[$i]}" >> "$temp_file"
-                fi
-                i=$((i + 1))
-            done
-            
-            if [ "$removed" = true ]; then
-                # Check if file is empty or only has whitespace
-                local content=$(cat "$temp_file" | tr -d '[:space:]')
-                if [ -n "$content" ]; then
-                    # Remove trailing blank lines from temp file
-                    # Find last non-empty line
-                    local temp_lines_array=()
-                    while IFS= read -r tline || [ -n "$tline" ]; do
-                        temp_lines_array+=("$tline")
-                    done < "$temp_file"
-                    
-                    local last_non_empty_idx=-1
-                    local j=0
-                    while [ $j -lt ${#temp_lines_array[@]} ]; do
-                        local tline="${temp_lines_array[$j]}"
-                        if [ -n "$(echo "$tline" | tr -d '[:space:]')" ]; then
-                            last_non_empty_idx=$j
-                        fi
-                        j=$((j + 1))
-                    done
-                    
-                    # Rewrite temp file, collapsing consecutive blank lines and removing trailing blanks
-                    > "$temp_file"
-                    j=0
-                    local prev_was_blank=false
-                    while [ $j -le $last_non_empty_idx ]; do
-                        local tline="${temp_lines_array[$j]}"
-                        local is_blank=false
-                        if [ -z "$(echo "$tline" | tr -d '[:space:]')" ]; then
-                            is_blank=true
-                        fi
-                        
-                        # Only write the line if:
-                        # 1. It's not blank, OR
-                        # 2. It's blank but the previous line wasn't blank (collapse consecutive blanks)
-                        if [ "$is_blank" = false ] || [ "$prev_was_blank" = false ]; then
-                            echo "$tline" >> "$temp_file"
-                        fi
-                        
-                        prev_was_blank=$is_blank
-                        j=$((j + 1))
-                    done
-                    
-                    mv "$temp_file" "$ytdlp_config_file"
-                    print_success "Removed ffmpeg-location from yt-dlp config"
-                else
-                    # File is empty, delete it
-                    rm -f "$ytdlp_config_file" "$temp_file"
-                    print_success "Removed empty yt-dlp configuration file"
-                    
-                    # Remove directory if it's now empty
-                    local ytdlp_config_dir="${config_home}/yt-dlp"
-                    if [ -d "$ytdlp_config_dir" ] && [ -z "$(ls -A "$ytdlp_config_dir" 2>/dev/null)" ]; then
-                        rmdir "$ytdlp_config_dir" 2>/dev/null && print_success "Removed empty yt-dlp configuration directory"
-                    fi
-                fi
-            else
-                # grep found it but exact match didn't - likely modified, skip silently
-                rm -f "$temp_file"
-            fi
-        else
-            print_info "No ffmpeg-location configuration found"
-        fi
-    else
-        print_info "yt-dlp configuration file not found"
-    fi
-    echo ""
-}
-
 # ----------------------------------------------------------------------------
 # Main Uninstaller Function
 # ----------------------------------------------------------------------------
@@ -1331,10 +1186,12 @@ uninstall_all() {
     echo ""
     
     # Phase 3: Remove pip packages (CRITICAL: Before removing python3)
-    print_info "Phase 2: Removing pip packages..."
-    echo ""
-    uninstall_pip_packages
-    echo ""
+    if [ "$PACKAGE_MANAGER" = "homebrew" ]; then
+        print_info "Phase 2: Removing pip packages..."
+        echo ""
+        uninstall_pip_packages
+        echo ""
+    fi
     
     # Phase 4: Remove system packages
     print_info "Phase 3: Removing system packages..."
@@ -1357,11 +1214,6 @@ uninstall_all() {
     
     cleanup_pip_config
     cleanup_path_config
-    
-    # Only cleanup yt-dlp config for MacPorts (Homebrew doesn't add yt-dlp config)
-    if [ "$PACKAGE_MANAGER" = "macports" ]; then
-        cleanup_ytdlp_config
-    fi
     echo ""
     
     # Phase 6: Refresh command cache
@@ -1442,28 +1294,6 @@ main() {
         print_info "Installing yt-dlp via MacPorts (deselecting ffmpeg variant)..."
         if sudo port -q install yt-dlp -ffmpeg; then
             print_success "yt-dlp installed successfully"
-            echo ""
-            # Configure yt-dlp config file for MacPorts FFMPEG support
-            local config_home="${XDG_CONFIG_HOME:-$HOME/.config}"
-            local ytdlp_config_dir="${config_home}/yt-dlp"
-            local ytdlp_config_file="${ytdlp_config_dir}/config"
-            
-            print_info "Configuring yt-dlp config file for MacPorts FFMPEG support..."
-            
-            # Create config directory
-            mkdir -p "$ytdlp_config_dir"
-            
-            # Check if the configuration already exists in the config file
-            if [ -f "$ytdlp_config_file" ] && grep -q "--ffmpeg-location /opt/local/bin/ffmpeg8" "$ytdlp_config_file" 2>/dev/null; then
-                print_info "FFMPEG location is already configured in $ytdlp_config_file"
-            else
-                # Add the configuration block to the config file
-                {
-                    echo "# Enable MacPorts version of FFMPEG"
-                    echo " --ffmpeg-location /opt/local/bin/ffmpeg8"
-                } >> "$ytdlp_config_file"
-                print_success "Added FFMPEG location to yt-dlp config: $ytdlp_config_file"
-            fi
             echo ""
         else
             print_error "Failed to install yt-dlp"
