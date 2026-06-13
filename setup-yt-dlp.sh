@@ -36,7 +36,15 @@ command_exists() {
     command -v "$1" >/dev/null 2>&1
 }
 
-# Phase 1: Package Manager Detection
+# ============================================================================
+# INSTALLER FUNCTIONS
+# ============================================================================
+
+# ----------------------------------------------------------------------------
+# Package Manager Detection
+# ----------------------------------------------------------------------------
+
+# Function to detect and select the available package manager (Homebrew or MacPorts)
 detect_package_manager() {
     local has_brew=false
     local has_macports=false
@@ -105,67 +113,27 @@ detect_package_manager() {
     fi
 }
 
-# Function to check if a Homebrew package is installed
-brew_package_installed() {
-    brew list "$1" >/dev/null 2>&1
-}
+# ----------------------------------------------------------------------------
+# Existing Installation Check
+# ----------------------------------------------------------------------------
 
-# Function to check if a MacPorts package is installed
-macports_package_installed() {
-    port installed "$1" 2>/dev/null | grep -q "  $1 @"
-}
+# Function to check if yt-dlp is already installed via the selected package manager.
+# If so, informs the user and exits before any installation messages are printed.
+check_existing_yt_dlp_installation() {
+    if package_installed "yt-dlp"; then
+        local pm_display="Homebrew"
+        [ "$PACKAGE_MANAGER" = "macports" ] && pm_display="MacPorts"
 
-# Function to check if a package is installed
-package_installed() {
-    local package="$1"
-    if [ "$PACKAGE_MANAGER" = "homebrew" ]; then
-        brew_package_installed "$package"
-    else
-        macports_package_installed "$package"
+        print_error "yt-dlp is already installed via $pm_display."
+        print_info "If you want to uninstall yt-dlp and its dependencies instead, run this script again with the -u or --uninstall flag."
+        echo ""
+        exit 1
     fi
 }
 
-# Function to install a Homebrew package
-install_brew_package() {
-    local package="$1"
-    print_info "Installing $package via Homebrew..."
-    if brew install -q "$package"; then
-        print_success "$package installed successfully"
-        echo ""
-        return 0
-    else
-        print_error "Failed to install $package"
-        echo ""
-        FAILED_PACKAGES="$FAILED_PACKAGES $package"
-        return 1
-    fi
-}
-
-# Function to install a MacPorts package
-install_macports_package() {
-    local package="$1"
-    print_info "Installing $package via MacPorts..."
-    if sudo port -q install "$package"; then
-        print_success "$package installed successfully"
-        echo ""
-        return 0
-    else
-        print_error "Failed to install $package"
-        echo ""
-        FAILED_PACKAGES="$FAILED_PACKAGES $package"
-        return 1
-    fi
-}
-
-# Function to install a package
-install_package() {
-    local package="$1"
-    if [ "$PACKAGE_MANAGER" = "homebrew" ]; then
-        install_brew_package "$package"
-    else
-        install_macports_package "$package"
-    fi
-}
+# ----------------------------------------------------------------------------
+# Package Manager Configuration (Phase 1.5)
+# ----------------------------------------------------------------------------
 
 # Function to configure Homebrew
 configure_homebrew() {
@@ -234,6 +202,90 @@ configure_macports() {
     fi
 }
 
+# ----------------------------------------------------------------------------
+# System Package Install Functions (Phase 2)
+# ----------------------------------------------------------------------------
+
+# Function to get system packages for the chosen package manager
+get_system_packages() {
+    local pm="$1"
+    local packages=""
+    
+    if [ "$pm" = "homebrew" ]; then
+        packages="bash ffmpeg atomicparsley python3 deno"
+    elif [ "$pm" = "macports" ]; then
+        packages="ffmpeg py-pip deno"
+    fi
+    
+    echo "$packages"
+}
+
+# Function to check if a Homebrew package is installed
+brew_package_installed() {
+    brew list "$1" >/dev/null 2>&1
+}
+
+# Function to check if a MacPorts package is installed
+macports_package_installed() {
+    port installed "$1" 2>/dev/null | grep -q "  $1 @"
+}
+
+# Function to check if a package is installed
+package_installed() {
+    local package="$1"
+    if [ "$PACKAGE_MANAGER" = "homebrew" ]; then
+        brew_package_installed "$package"
+    else
+        macports_package_installed "$package"
+    fi
+}
+
+# Function to install a Homebrew package
+install_brew_package() {
+    local package="$1"
+    print_info "Installing $package via Homebrew..."
+    if brew install -q "$package"; then
+        print_success "$package installed successfully"
+        echo ""
+        return 0
+    else
+        print_error "Failed to install $package"
+        echo ""
+        FAILED_PACKAGES="$FAILED_PACKAGES $package"
+        return 1
+    fi
+}
+
+# Function to install a MacPorts package
+install_macports_package() {
+    local package="$1"
+    print_info "Installing $package via MacPorts..."
+    if sudo port -q install "$package"; then
+        print_success "$package installed successfully"
+        echo ""
+        return 0
+    else
+        print_error "Failed to install $package"
+        echo ""
+        FAILED_PACKAGES="$FAILED_PACKAGES $package"
+        return 1
+    fi
+}
+
+# Function to install a package
+install_package() {
+    local package="$1"
+    if [ "$PACKAGE_MANAGER" = "homebrew" ]; then
+        install_brew_package "$package"
+    else
+        install_macports_package "$package"
+    fi
+}
+
+# ----------------------------------------------------------------------------
+# Pip/Python Configuration (Phase 2.5)
+# ----------------------------------------------------------------------------
+
 # Function to detect the installed MacPorts python3 version port name (e.g. python313, python314)
 detect_macports_python_version() {
     port installed 2>/dev/null | grep -oE "python3[0-9][0-9]" | sed 's/^python3//' | sort -rn | head -1 | sed 's/^/python3/'
@@ -283,41 +335,6 @@ configure_macports_python() {
 
     # Refresh command cache to use new python/pip commands immediately
     hash -r 2>/dev/null || true
-}
-
-# Function to get system packages for the chosen package manager
-get_system_packages() {
-    local pm="$1"
-    local packages=""
-    
-    if [ "$pm" = "homebrew" ]; then
-        packages="bash ffmpeg atomicparsley python3 deno"
-    elif [ "$pm" = "macports" ]; then
-        packages="ffmpeg py-pip deno"
-    fi
-    
-    echo "$packages"
-}
-
-# Function to check if a pip package is installed
-pip3_package_installed() {
-    pip3 show "$1" >/dev/null 2>&1
-}
-
-# Function to install a pip package
-install_pip3_package() {
-    local package="$1"
-    print_info "Installing $package via pip3..."
-    if pip3 install "$package"; then
-        print_success "$package installed successfully"
-        echo ""
-        return 0
-    else
-        print_error "Failed to install $package"
-        echo ""
-        FAILED_PIP_PACKAGES="$FAILED_PIP_PACKAGES $package"
-        return 1
-    fi
 }
 
 # Function to configure pip for MacPorts Python
@@ -412,6 +429,31 @@ configure_homebrew_pip() {
             } >> "$zshrc_file"
             print_success "Added pip scripts directory to PATH in $zshrc_file"
         fi
+    fi
+}
+
+# ----------------------------------------------------------------------------
+# Pip Package Install Functions (Phase 3)
+# ----------------------------------------------------------------------------
+
+# Function to check if a pip package is installed
+pip3_package_installed() {
+    pip3 show "$1" >/dev/null 2>&1
+}
+
+# Function to install a pip package
+install_pip3_package() {
+    local package="$1"
+    print_info "Installing $package via pip3..."
+    if pip3 install "$package"; then
+        print_success "$package installed successfully"
+        echo ""
+        return 0
+    else
+        print_error "Failed to install $package"
+        echo ""
+        FAILED_PIP_PACKAGES="$FAILED_PIP_PACKAGES $package"
+        return 1
     fi
 }
 
@@ -659,21 +701,16 @@ uninstall_pip_packages() {
     
     if [ -n "$autoremove_cmd" ]; then
         print_info "Removing pip packages using pip-autoremove (removes unused dependencies too)..."
-        local removed_any=false
         for package in $packages; do
             if pip3_package_installed "$package"; then
                 if $autoremove_cmd "$package" -y >/dev/null 2>&1; then
                     print_success "$package removed successfully (with unused dependencies)"
-                    removed_any=true
                 else
                     print_warning "Failed to remove $package with pip-autoremove, trying direct uninstall"
                     pip3 uninstall -y "$package" >/dev/null 2>&1 || true
                 fi
             fi
         done
-        if [ "$removed_any" = true ]; then
-            echo ""
-        fi
     else
         # Fallback to direct uninstall
         print_info "Using direct uninstall method..."
@@ -685,9 +722,9 @@ uninstall_pip_packages() {
         if pip3 show pip-autoremove >/dev/null 2>&1; then
             print_info "Removing pip-autoremove..."
             pip3 uninstall -y pip-autoremove >/dev/null 2>&1
-            echo ""
         fi
     fi
+    echo ""
 }
 
 # ----------------------------------------------------------------------------
@@ -854,7 +891,7 @@ cleanup_macports_config() {
             fi
         fi
     fi
-    
+    echo ""
 }
 
 # Function to cleanup pip configuration
@@ -1161,7 +1198,6 @@ uninstall_all() {
     echo ""
     
     # Prompt for confirmation
-    echo ""
     print_warning "This will uninstall all packages from the known package lists."
     print_warning "Configuration changes will be reverted."
     echo ""
@@ -1175,25 +1211,23 @@ uninstall_all() {
     
     echo ""
     
-    # Phase 1: Detect package manager
+    # Detect package manager
     detect_package_manager
     echo ""
     
-    # Phase 2: Remove yt-dlp package first
+    # Phase 1: Remove yt-dlp package first
     print_info "Phase 1: Removing yt-dlp package..."
     echo ""
     uninstall_package "yt-dlp"
-    echo ""
     
-    # Phase 3: Remove pip packages (CRITICAL: Before removing python3)
+    # Phase 2: Remove pip packages (CRITICAL: Before removing python3)
     if [ "$PACKAGE_MANAGER" = "homebrew" ]; then
         print_info "Phase 2: Removing pip packages..."
         echo ""
         uninstall_pip_packages
-        echo ""
     fi
     
-    # Phase 4: Remove system packages
+    # Phase 3: Remove system packages
     print_info "Phase 3: Removing system packages..."
     echo ""
     if [ "$PACKAGE_MANAGER" = "homebrew" ]; then
@@ -1201,9 +1235,8 @@ uninstall_all() {
     elif [ "$PACKAGE_MANAGER" = "macports" ]; then
         uninstall_macports_packages
     fi
-    echo ""
     
-    # Phase 5: Clean up configurations
+    # Phase 4: Clean up configurations
     print_info "Phase 4: Cleaning up configurations..."
     echo ""
     if [ "$PACKAGE_MANAGER" = "homebrew" ]; then
@@ -1214,14 +1247,13 @@ uninstall_all() {
     
     cleanup_pip_config
     cleanup_path_config
-    echo ""
     
-    # Phase 6: Refresh command cache
+    # Refresh command cache
     print_info "Refreshing command cache..."
     hash -r 2>/dev/null || true
     echo ""
     
-    # Phase 7: Report summary
+    # Report summary
     echo "=========================================="
     echo ""
     print_success "Uninstallation completed!"
@@ -1239,11 +1271,15 @@ uninstall_all() {
 
 # Main installation function
 main() {
-    print_info "Starting yt-dlp dependency installation..."
-    echo ""
-    
     # Phase 1: Detect package manager
     detect_package_manager
+    echo ""
+    
+    # Check if yt-dlp is already installed via the selected package manager.
+    # If so, this exits the script before any installation messages are printed.
+    check_existing_yt_dlp_installation
+    
+    print_info "Starting yt-dlp dependency installation..."
     echo ""
     
     # Phase 1.5: Configure package manager
@@ -1306,7 +1342,6 @@ main() {
     fi
     
     # Phase 5: Report failures and completion
-    echo ""
     echo "=========================================="
     echo ""
     
@@ -1339,9 +1374,3 @@ else
     # Run main function (installation)
     main
 fi
-
-## THINGS TO STILL DO:
-## Cosmetic issues when uninstalling 
-## Check order functions for script and see if it can be cleaned up
-## Make installer detect if yt-dlp is already installed at the very beginning
-## and inform the user of the uninstaller and how to run it
