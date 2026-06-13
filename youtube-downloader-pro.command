@@ -44,6 +44,7 @@ check_dependencies() {
 update_ytdlp() {
     print_header "Checking for Updates"
     brew upgrade -q yt-dlp || true
+    pip3 install -Uq yt-dlp-ejs
     echo ""
     sleep 1
 }
