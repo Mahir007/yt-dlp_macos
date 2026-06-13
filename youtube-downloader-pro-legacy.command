@@ -40,17 +40,16 @@ FORMAT_OPTS=(
 )
 
 check_dependencies() {
-    if ! command -v yt-dlp &> /dev/null; then
+    if ! command -v yt-dlp_macos &> /dev/null; then
         error "Error: yt-dlp is not installed or not on your PATH."
-        echo -e "Install it with: ${YELLOW}brew install yt-dlp${NC}"
+        echo -e "Download from ${YELLOW}https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos${NC}"
         exit 1
     fi
 }
 
 update_ytdlp() {
     print_header "Checking for Updates"
-    brew upgrade -q yt-dlp || true
-    pip3 install -Uq yt-dlp-ejs
+    yt-dlp_macos -U
     echo ""
     sleep 1
 }
@@ -75,7 +74,7 @@ download_loop() {
 
         echo -e "\n${BLUE}Starting download...${NC}\n"
 
-        if yt-dlp "${opts[@]}" "$url"; then
+        if yt-dlp_macos "${opts[@]}" "$url"; then
             success "\nDownload completed successfully!"
         else
             error "\nDownload failed. Please verify the URL and try again."
