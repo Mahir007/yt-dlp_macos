@@ -48,7 +48,8 @@ check_dependencies() {
 }
 
 update_ytdlp() {
-    print_header "Checking for Updates"
+    clear
+    print_header "Checking for updates"
     yt-dlp_macos -U
     echo ""
     sleep 1
