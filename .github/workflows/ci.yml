@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    paths-ignore:
+      - '**.md'
+      - LICENSE
+  workflow_dispatch:
+
+# A newer push to the same branch cancels the run for the older one.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    name: zsh 5.8 on Linux
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+
+      # macOS 12 ships zsh 5.8, the oldest version the script supports, and
+      # GitHub has no macOS 12 runners. Debian 11 packaged the same release.
+      - name: Install zsh 5.8
+        working-directory: ${{ runner.temp }}
+        run: |
+          base=https://archive.debian.org/debian/pool/main/z/zsh
+          curl -fsSLO "$base/zsh-common_5.8-6+deb11u1_all.deb"
+          curl -fsSLO "$base/zsh_5.8-6+deb11u1_amd64.deb"
+          sha256sum -c - <<'EOF'
+          2466fcf973de97c6ba9d4459a06a1e0faab93a44e16fe72520bba76fc377f533  zsh-common_5.8-6+deb11u1_all.deb
+          0d42edeaeb806767bcfde72eb3c29aa34f5065db061e918a2b64ebb0a9821a80  zsh_5.8-6+deb11u1_amd64.deb
+          EOF
+          sudo dpkg -i zsh-common_5.8-6+deb11u1_all.deb zsh_5.8-6+deb11u1_amd64.deb
+          /bin/zsh --version
+
+      - name: Lint
+        run: make lint
+
+      - name: Test
+        run: make test
+
+  macos:
+    name: zsh on macOS 15
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+
+      - name: Show zsh version
+        run: /bin/zsh --version
+
+      - name: Test
+        run: make test
