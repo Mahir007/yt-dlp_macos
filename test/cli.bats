@@ -15,7 +15,7 @@ teardown() {
 
 @test "--help shows usage on stdout" {
     run -0 --separate-stderr setup_script --help
-    assert_line --index 0 'Usage: yt-dlp_setup.zsh [options]'
+    assert_line --index 0 'Usage: setup-yt-dlp.zsh [options]'
     assert_line '  -m, --manager <name>  Package manager to use: homebrew or macports'
     assert_stderr ''
 }
@@ -29,12 +29,12 @@ teardown() {
 
 @test "--help wins over other options" {
     run -0 setup_script --uninstall --help
-    assert_line --index 0 'Usage: yt-dlp_setup.zsh [options]'
+    assert_line --index 0 'Usage: setup-yt-dlp.zsh [options]'
 }
 
 @test "--version shows the version" {
     run -0 setup_script --version
-    assert_output --regexp '^yt-dlp_setup [0-9]+\.[0-9]+\.[0-9]+$'
+    assert_output --regexp '^setup-yt-dlp [0-9]+\.[0-9]+\.[0-9]+$'
 }
 
 @test "-V is the same as --version" {
@@ -48,7 +48,7 @@ teardown() {
     run -2 --separate-stderr setup_script --bogus
     assert_output ''
     assert_stderr "error: unknown option '--bogus'
-Run 'yt-dlp_setup.zsh --help' to see the options."
+Run 'setup-yt-dlp.zsh --help' to see the options."
 }
 
 @test "an unknown short option is a usage error" {

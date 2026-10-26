@@ -71,7 +71,7 @@ Install one of them, then run this script again:
     use_fake homebrew
     use_fake macports
     run -0 answer '\n' 'pm_select; print -r -- "picked $opts[manager]"'
-    assert_output --partial 'Both Homebrew and MacPorts are installed. Which one should yt-dlp_setup use?
+    assert_output --partial 'Both Homebrew and MacPorts are installed. Which one do you want to use?
   1) Homebrew (recommended)
   2) MacPorts
 Choose 1-2 [1]: '
