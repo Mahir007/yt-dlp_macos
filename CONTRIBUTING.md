@@ -5,6 +5,7 @@
 - `src/` has the setup script.
 - `bin/` has the downloader scripts.
 - `test/` has the bats tests. `test/bats` and `test/test_helper/bats-*` are git submodules.
+- `archive/` has the old bash setup script, which the zsh one replaces. It isn't maintained or released.
 
 ## Running the tests
 
