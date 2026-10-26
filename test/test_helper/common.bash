@@ -22,6 +22,8 @@ common_setup() {
     mkdir -p "$STUBS"
     export PATH=$STUBS:$PATH
     unset NO_COLOR ZDOTDIR
+    # CI runners don't set TERM, and the script treats that like TERM=dumb.
+    export TERM=xterm-256color
 
     stub sw_vers 'echo 12.7.6'
 }
