@@ -1,12 +1,16 @@
 #!/bin/bash
-# A fake Homebrew Python, for pip. Installed packages are files in
-# $FAKE_STATE/pip holding their version. Every call is logged to
-# $FAKE_STATE/calls. Creating $FAKE_STATE/fail/NAME makes installing NAME
-# fail.
+# A fake Homebrew Python, for pip and `-m site --user-base`. Installed
+# packages are files in $FAKE_STATE/pip holding their version. Every call is
+# logged to $FAKE_STATE/calls. Creating $FAKE_STATE/fail/NAME makes
+# installing NAME fail.
 set -u
 state=$FAKE_STATE/pip
 echo "python3 $*" >>"$FAKE_STATE/calls"
 
+if [[ ${1-} == -m && ${2-} == site && ${3-} == --user-base ]]; then
+    echo "$HOME/Library/Python/3.15"
+    exit 0
+fi
 if [[ ${1-} != -m || ${2-} != pip ]]; then
     echo "fake python3: unsupported: $*" >&2
     exit 2

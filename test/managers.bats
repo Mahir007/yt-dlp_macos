@@ -21,10 +21,6 @@ answer() {
     printf "$1" | in_script_tty "$2" | tr -d '\r'
 }
 
-calls() {
-    cat "$FAKE_STATE/calls"
-}
-
 @test "with only Homebrew installed, it's used" {
     use_fake homebrew
     run -0 in_script 'pm_select; print -r -- $opts[manager]'
