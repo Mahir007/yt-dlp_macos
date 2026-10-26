@@ -2,7 +2,8 @@
 
 ## Layout
 
-- `bin/` has the scripts that get released.
+- `src/` has the setup script.
+- `bin/` has the downloader scripts.
 - `test/` has the bats tests. `test/bats` and `test/test_helper/bats-*` are git submodules.
 
 ## Running the tests
