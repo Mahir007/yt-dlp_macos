@@ -1,0 +1,3 @@
+# The scripts don't run on macOS with CRLF line endings, which a Windows
+# checkout would otherwise give them.
+* text=auto eol=lf
