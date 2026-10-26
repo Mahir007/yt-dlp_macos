@@ -17,7 +17,7 @@ teardown() {
     run -0 --separate-stderr setup_script --help
     assert_line --index 0 'Usage: setup-yt-dlp.zsh [options]'
     assert_line '  -m, --manager <name>  Package manager to use: homebrew or macports'
-    assert_equal "$stderr" ''
+    assert_stderr ''
 }
 
 @test "-h is the same as --help" {
