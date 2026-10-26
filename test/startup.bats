@@ -17,13 +17,13 @@ teardown() {
 @test "started with bash, it runs again under zsh" {
     ln -s "$ZSH_BIN" "$STUBS/zsh"
     run -0 bash "$SCRIPT" --version
-    assert_output --regexp '^setup-yt-dlp '
+    assert_output --regexp '^yt-dlp_setup '
 }
 
 @test "started with sh, it runs again under zsh" {
     ln -s "$ZSH_BIN" "$STUBS/zsh"
     run -0 sh "$SCRIPT" --version
-    assert_output --regexp '^setup-yt-dlp '
+    assert_output --regexp '^yt-dlp_setup '
 }
 
 @test "it stops when the macOS tools aren't there" {
