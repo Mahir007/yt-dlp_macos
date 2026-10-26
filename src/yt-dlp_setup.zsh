@@ -295,6 +295,194 @@ sudo_end() {
 }
 
 # ----------------------------------------------------------------------------
+# Asking questions
+# ----------------------------------------------------------------------------
+
+# ui_can_ask: succeed if there's a terminal to ask questions on. When the
+# script is piped in (curl ... | zsh), stdin is the script itself, so the
+# questions go to /dev/tty.
+ui_can_ask() {
+    [[ -t 0 ]] || { : </dev/tty } 2>/dev/null
+}
+
+# ui_read NAME: read a line from the terminal into the variable NAME.
+ui_read() {
+    if [[ -t 0 ]]; then
+        read -r $1
+    else
+        read -r $1 </dev/tty
+    fi
+}
+
+# ui_choose QUESTION CHOICE...: ask which choice to use, and set REPLY to
+# its number. The first choice is the default, used with --yes or on Enter.
+ui_choose() {
+    local question=$1 answer
+    shift
+    if (( opts[yes] )); then
+        typeset -g REPLY=1
+        return 0
+    fi
+    print -r -- "$question"
+    local -i i
+    for (( i = 1; i <= $#; i++ )); do
+        print -r -- "  $i) $argv[i]"
+    done
+    while :; do
+        print -rn -- "Choose 1-$# [1]: "
+        if ! ui_read answer; then
+            print
+            die "no answer given"
+        fi
+        [[ -z $answer ]] && answer=1
+        [[ $answer == <-> ]] && (( answer >= 1 && answer <= $# )) && break
+    done
+    typeset -g REPLY=$answer
+}
+
+# ----------------------------------------------------------------------------
+# Package managers
+# ----------------------------------------------------------------------------
+
+typeset -grA PM_TITLE=(homebrew Homebrew macports MacPorts)
+typeset -grA PM_COMMAND=(homebrew brew macports port)
+# The chosen manager's prefix, such as /opt/homebrew, and version. Set by
+# pm_init.
+typeset -g pm_prefix='' pm_version=''
+
+# pm_select: settle opts[manager], asking if both managers are installed.
+pm_select() {
+    local -a found=()
+    local name
+    for name in homebrew macports; do
+        (( $+commands[$PM_COMMAND[$name]] )) && found+=($name)
+    done
+
+    if [[ -n $opts[manager] ]]; then
+        if (( ! ${found[(Ie)$opts[manager]]} )); then
+            die "$PM_TITLE[$opts[manager]] isn't installed: there's no '$PM_COMMAND[$opts[manager]]' command"
+        fi
+    elif (( $#found == 1 )); then
+        opts[manager]=$found[1]
+    elif (( $#found == 2 )); then
+        if (( ! opts[yes] )) && ! ui_can_ask; then
+            die "both Homebrew and MacPorts are installed; choose one with --manager"
+        fi
+        ui_choose "Both Homebrew and MacPorts are installed. Which one should yt-dlp_setup use?" \
+            "Homebrew (recommended)" MacPorts
+        local -a choices=(homebrew macports)
+        opts[manager]=$choices[REPLY]
+    else
+        ui_error "neither Homebrew nor MacPorts is installed"
+        print -ru2 -- "
+Install one of them, then run this script again:
+  1. Install Apple's command line tools: xcode-select --install
+  2. Install Homebrew (recommended):
+       https://github.com/Homebrew/brew/releases/latest
+     or the MacPorts release for your version of macOS:
+       https://github.com/macports/macports-base/releases/latest"
+        exit 1
+    fi
+}
+
+# pm_init: get the chosen manager ready to use.
+pm_init() {
+    # The command is PREFIX/bin/brew or PREFIX/bin/port. Not resolving
+    # symlinks matters: /opt/homebrew/bin/brew links into
+    # /opt/homebrew/Homebrew.
+    local cmd=$commands[$PM_COMMAND[$opts[manager]]]
+    pm_prefix=${cmd:h:h}
+    case $opts[manager] in
+        homebrew)
+            export HOMEBREW_NO_ENV_HINTS=1 HOMEBREW_NO_ASK=1
+            # The first line is "Homebrew 4.6.3".
+            local -a lines=( ${(f)"$(brew --version 2>/dev/null)"} )
+            pm_version=${lines[1]-}
+            pm_version=${pm_version#Homebrew }
+            ;;
+        macports)
+            # "Version: 2.10.5"
+            pm_version=$(port version 2>/dev/null)
+            pm_version=${pm_version#Version: }
+            ;;
+    esac
+}
+
+# pkg_version NAME: print the installed version of package NAME, or fail if
+# it isn't installed.
+pkg_version() { ${opts[manager]}_version "$@" }
+
+# pkg_install NAME [ARGS...]: install package NAME as a step. ARGS go to
+# the manager, such as MacPorts variants.
+pkg_install() { ${opts[manager]}_install "$@" }
+
+# pkg_uninstall NAME: uninstall package NAME as a step.
+pkg_uninstall() { ${opts[manager]}_uninstall "$@" }
+
+homebrew_version() {
+    # "ffmpeg 7.1_4", or "python@3.15 3.15.1" for the alias python3.
+    local -a words=( ${=$(brew list --formula --versions $1 2>/dev/null)} )
+    (( $#words > 1 )) || return 1
+    print -r -- $words[-1]
+}
+
+homebrew_install() {
+    run_step "$1" installing installed -- brew install --formula "$@"
+}
+
+homebrew_uninstall() {
+    run_step "$1" uninstalling uninstalled -- brew uninstall --formula $1
+}
+
+macports_version() {
+    # "  ffmpeg @7.1_0+gpl2 (active)". An inactive port counts as not
+    # installed: installing it again activates it.
+    local line
+    local -a match mbegin mend
+    for line in ${(f)"$(port -q installed $1 2>/dev/null)"}; do
+        if [[ $line == (#b)[[:space:]]#$1' @'([^+[:space:]]##)*'(active)'* ]]; then
+            print -r -- $match[1]
+            return 0
+        fi
+    done
+    return 1
+}
+
+macports_install() {
+    sudo_begin "MacPorts needs administrator access to install packages."
+    run_step "$1" installing installed -- sudo -n port -N install "$@"
+}
+
+macports_uninstall() {
+    sudo_begin "MacPorts needs administrator access to remove packages."
+    run_step "$1" uninstalling uninstalled -- sudo -n port -N uninstall $1
+}
+
+# With Homebrew, yt-dlp's Python packages go into the user's site-packages
+# of Homebrew's Python. Homebrew marks that Python as externally managed,
+# hence --break-system-packages.
+pip_version() {
+    local line
+    for line in ${(f)"$($pm_prefix/bin/python3 -m pip show $1 2>/dev/null)"}; do
+        if [[ $line == 'Version: '* ]]; then
+            print -r -- ${line#Version: }
+            return 0
+        fi
+    done
+    return 1
+}
+
+pip_install() {
+    run_step "$1" installing installed -- \
+        $pm_prefix/bin/python3 -m pip install --user --break-system-packages $1
+}
+
+pip_uninstall() {
+    run_step "$1" uninstalling uninstalled -- \
+        $pm_prefix/bin/python3 -m pip uninstall --yes --break-system-packages $1
+}
+
+# ----------------------------------------------------------------------------
 # Command line
 # ----------------------------------------------------------------------------
 
@@ -437,8 +625,15 @@ preflight() {
 # Commands
 # ----------------------------------------------------------------------------
 
+cmd_install() {
+    pm_select
+    pm_init
+    print -r -- "Using $PM_TITLE[$opts[manager]] $pm_version"
+    # Still being ported from archive/setup-yt-dlp.sh.
+    die "installing isn't implemented yet"
+}
+
 # Still being ported from archive/setup-yt-dlp.sh.
-cmd_install()   { die "installing isn't implemented yet" }
 cmd_uninstall() { die "uninstalling isn't implemented yet" }
 cmd_status()    { die "--status isn't implemented yet" }
 
