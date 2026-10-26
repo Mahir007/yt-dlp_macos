@@ -12,7 +12,7 @@ common_setup() {
     load test_helper/bats-support/load
     load test_helper/bats-assert/load
 
-    SCRIPT=$BATS_TEST_DIRNAME/../bin/setup-yt-dlp.zsh
+    SCRIPT=$BATS_TEST_DIRNAME/../src/setup-yt-dlp.zsh
     # Resolved before the stubs go on PATH, for in_tty.
     PYTHON=$(command -v python3)
 
