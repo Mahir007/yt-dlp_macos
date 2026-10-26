@@ -24,6 +24,9 @@ common_setup() {
     unset NO_COLOR ZDOTDIR
     # CI runners don't set TERM, and the script treats that like TERM=dumb.
     export TERM=xterm-256color
+    # The script picks Unicode or ASCII symbols from the locale.
+    export LANG=en_US.UTF-8
+    unset LC_ALL LC_CTYPE
 
     stub sw_vers 'echo 12.7.6'
 }
@@ -58,6 +61,13 @@ in_script() {
 }
 
 # in_tty COMMAND...: run COMMAND with a pseudo-terminal for its output.
+# Anything on stdin is typed into the terminal, so `printf '\003'` is Ctrl-C.
 in_tty() {
     "$PYTHON" -c 'import os, pty, sys; sys.exit(os.waitstatus_to_exitcode(pty.spawn(sys.argv[1:])))' "$@"
+}
+
+# in_script_tty CODE: in_script with a pseudo-terminal for the output.
+in_script_tty() {
+    # shellcheck disable=SC2016  # expanded by zsh, not here
+    in_tty "$ZSH_BIN" -fc 'source "$1" && eval "$2"' zsh "$SCRIPT" "$1"
 }
