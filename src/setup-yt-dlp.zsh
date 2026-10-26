@@ -29,7 +29,10 @@ if ! is-at-least 5.8; then
     exit 1
 fi
 
-zmodload zsh/zutil  # zparseopts
+zmodload zsh/zutil      # zparseopts
+zmodload zsh/datetime   # EPOCHREALTIME, strftime
+zmodload zsh/zselect    # sleeping for a fraction of a second
+zmodload -F zsh/files b:zf_mkdir b:zf_rm
 
 typeset -gr SETUP_VERSION=1.0.0
 
@@ -50,6 +53,8 @@ typeset -gA opts=(
     verbose  0
     color    auto       # auto or never
 )
+# The arguments as given, for the log.
+typeset -ga setup_args=()
 
 # ----------------------------------------------------------------------------
 # Output
@@ -57,16 +62,65 @@ typeset -gA opts=(
 
 # Escape sequences by name, empty until ui_init turns colors on.
 typeset -gA c=(bold '' dim '' red '' green '' yellow '' blue '' reset '')
+# Status symbols and spinner frames, ASCII until ui_init finds a UTF-8 locale.
+typeset -gA sym=(ok + fail x skip - step '>' bar '|' more ...)
+typeset -ga spinner_frames=('|' / - '\')
+# 1 when the output is a terminal that can redraw a line for the spinner.
+typeset -gi ui_live=0
+# Width of the subject column in step lines.
+typeset -gri UI_WIDTH=18
 
 ui_init() {
     if [[ $opts[color] == auto && -t 1 && -z ${NO_COLOR-} && ${TERM-dumb} != dumb ]]; then
         c=(bold $'\e[1m' dim $'\e[2m' red $'\e[31m' green $'\e[32m'
            yellow $'\e[33m' blue $'\e[34m' reset $'\e[0m')
     fi
+    if [[ -t 1 && ${TERM-dumb} != dumb ]]; then
+        ui_live=1
+    fi
+    if [[ ${LC_ALL:-${LC_CTYPE:-${LANG-}}} == (#i)*utf(-|)8* ]]; then
+        sym=(ok ✓ fail ✗ skip – step ▸ bar │ more …)
+        spinner_frames=(⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏)
+    fi
 }
 
 ui_header() {
-    print -r -- "${c[bold]}yt-dlp setup${c[reset]} ${c[dim]}$SETUP_VERSION${c[reset]}"
+    local note=''
+    if (( opts[dry_run] )); then
+        note=" ${c[dim]}(dry run: nothing will be changed)${c[reset]}"
+    fi
+    print -r -- "${c[bold]}yt-dlp setup${c[reset]} ${c[dim]}$SETUP_VERSION${c[reset]}$note"
+}
+
+# ui_section TITLE: start a group of steps.
+ui_section() {
+    print
+    print -r -- "${c[bold]}${c[blue]}${sym[step]}${c[reset]} ${c[bold]}$1${c[reset]}"
+}
+
+# ui_step COLOR SYMBOL SUBJECT TEXT: print one line of a section, such as
+# "  ✓ ffmpeg             installed".
+ui_step() {
+    print -rf "  %s %-*s %s\n" "${c[$1]}$2${c[reset]}" $UI_WIDTH "$3" "$4"
+}
+
+ui_ok()   { ui_step green "$sym[ok]" "$1" "$2" }
+ui_fail() { ui_step red "$sym[fail]" "$1" "$2" }
+ui_skip() { ui_step dim "$sym[skip]" "$1" "${c[dim]}$2${c[reset]}" }
+
+# ui_detail TEXT: print a dim line under a step.
+ui_detail() {
+    print -r -- "    ${c[dim]}$1${c[reset]}"
+}
+
+# ui_duration SECONDS: print "45s" or "2m 5s".
+ui_duration() {
+    local -i s=$1
+    if (( s < 60 )); then
+        print -r -- "${s}s"
+    else
+        print -r -- "$(( s / 60 ))m $(( s % 60 ))s"
+    fi
 }
 
 ui_warn() {
@@ -81,6 +135,163 @@ ui_error() {
 die() {
     ui_error "$1"
     exit ${2:-1}
+}
+
+typeset -gi spinner_pid=0
+
+# spinner_start SUBJECT TEXT: animate a step line until spinner_stop.
+spinner_start() {
+    print -n $'\e[?25l'
+    {
+        local -i i=0
+        while :; do
+            print -nrf "\r  %s %-*s %s" "${c[blue]}${spinner_frames[i % $#spinner_frames + 1]}${c[reset]}" \
+                $UI_WIDTH "$1" "$2"
+            (( i++ ))
+            zselect -t 8
+        done
+    } &
+    spinner_pid=$!
+}
+
+spinner_stop() {
+    (( spinner_pid )) || return 0
+    kill $spinner_pid 2>/dev/null
+    wait $spinner_pid 2>/dev/null
+    spinner_pid=0
+    print -n $'\r\e[K\e[?25h'
+}
+
+# ----------------------------------------------------------------------------
+# Running commands
+# ----------------------------------------------------------------------------
+
+# The log of this run, created by the first step.
+typeset -g log_file=''
+
+log_open() {
+    [[ -n $log_file ]] && return 0
+    local dir=$HOME/Library/Logs/yt-dlp-setup stamp
+    zf_mkdir -p $dir 2>/dev/null || die "couldn't create ${(D)dir}"
+    strftime -s stamp %Y%m%d-%H%M%S $EPOCHSECONDS
+    log_file=$dir/$stamp.log
+    local args=none
+    (( $#setup_args )) && args=${(j: :)${(q-)setup_args}}
+    print -r -- "yt-dlp setup $SETUP_VERSION, arguments: $args" >$log_file
+    # Keep the ten newest logs.
+    local -a old=( $dir/*.log(Nom[11,-1]) )
+    (( $#old )) && zf_rm -f -- $old
+    return 0
+}
+
+# run_step SUBJECT DOING DONE -- COMMAND...
+#
+# Run COMMAND as one step of a section, as in `run_step ffmpeg installing
+# installed -- brew install ffmpeg`. Shows a spinner on a terminal, or the
+# command's output with --verbose, and the end of the output if it fails.
+# All output goes to the log. Returns COMMAND's status.
+run_step() {
+    local subject=$1 doing=$2 done=$3
+    [[ ${4-} == -- ]] || die "run_step: missing -- before the command"
+    shift 4
+    local cmdline=${(j: :)${(q-)@}}
+
+    if (( opts[dry_run] )); then
+        ui_skip "$subject" "would run: $cmdline"
+        return 0
+    fi
+
+    log_open
+    local out=${log_file%.log}.out stamp
+    local -F start=$EPOCHREALTIME
+    local -i rc
+    strftime -s stamp %H:%M:%S $EPOCHSECONDS
+    print -r -- "==> [$stamp] $cmdline" >>$log_file
+
+    if (( opts[verbose] )); then
+        ui_step blue "$sym[step]" "$subject" "$doing$sym[more]"
+        "$@" </dev/null 2>&1 | ui_stream $out
+        rc=$?
+    else
+        (( ui_live )) && spinner_start "$subject" "$doing$sym[more]"
+        "$@" </dev/null >$out 2>&1
+        rc=$?
+        spinner_stop
+    fi
+
+    local took=$(ui_duration $(( EPOCHREALTIME - start )))
+    print -r -- "$(<$out)" >>$log_file
+    print -r -- "==> exit status $rc after $took" >>$log_file
+    if (( rc == 0 )); then
+        if (( EPOCHREALTIME - start >= 1 )); then
+            done+=" ${c[dim]}($took)${c[reset]}"
+        fi
+        ui_ok "$subject" "$done"
+    else
+        ui_fail "$subject" failed
+        (( opts[verbose] )) || ui_tail $out
+        ui_detail "Log: ${(D)log_file}"
+    fi
+    zf_rm -f $out
+    return rc
+}
+
+# ui_stream FILE: copy stdin to FILE and show it under the current step.
+ui_stream() {
+    local line
+    {
+        while IFS= read -r line || [[ -n $line ]]; do
+            print -r -- $line >&3
+            print -r -- "    ${c[dim]}${sym[bar]} ${line##*$'\r'}${c[reset]}"
+        done
+    } 3>$1
+}
+
+# ui_tail FILE: show the last lines of a failed step's output.
+ui_tail() {
+    local -a lines=( "${(@f)"$(<$1)"}" )
+    # Progress bars redraw their line after a carriage return; keep the last
+    # drawing, and drop blank lines.
+    lines=( ${${lines##*$'\r'}:#[[:space:]]#} )
+    local -i first=$(( $#lines > 10 ? $#lines - 9 : 1 ))
+    local line
+    for line in ${lines[first,-1]}; do
+        ui_detail "$line"
+    done
+}
+
+# ----------------------------------------------------------------------------
+# Administrator access
+# ----------------------------------------------------------------------------
+
+typeset -gi sudo_keepalive_pid=0 sudo_asked=0
+
+# sudo_begin REASON: get administrator access before the steps that need
+# it, so they can use `sudo -n` behind the spinner. Keeps it fresh until
+# the script exits.
+sudo_begin() {
+    (( sudo_keepalive_pid || opts[dry_run] )) && return 0
+    if ! sudo -n -v 2>/dev/null; then
+        print -r -- "$1"
+        sudo -v -p "Password for %u: " || die "couldn't get administrator access"
+        sudo_asked=1
+    fi
+    {
+        while kill -0 $$ 2>/dev/null && sudo -n -v 2>/dev/null; do
+            zselect -t 3000
+        done
+    } &
+    sudo_keepalive_pid=$!
+}
+
+sudo_end() {
+    (( sudo_keepalive_pid )) || return 0
+    kill $sudo_keepalive_pid 2>/dev/null
+    wait $sudo_keepalive_pid 2>/dev/null
+    sudo_keepalive_pid=0
+    # Don't leave the terminal with access the script asked for.
+    (( sudo_asked )) && sudo -k
+    return 0
 }
 
 # ----------------------------------------------------------------------------
@@ -231,7 +442,34 @@ cmd_install()   { die "installing isn't implemented yet" }
 cmd_uninstall() { die "uninstalling isn't implemented yet" }
 cmd_status()    { die "--status isn't implemented yet" }
 
+# ----------------------------------------------------------------------------
+# Exit and interrupts
+# ----------------------------------------------------------------------------
+
+# Defined at the top level, so they apply to the whole script and not to a
+# single function. Neither runs in subshells or background jobs.
+TRAPEXIT() {
+    spinner_stop
+    sudo_end
+    [[ -n $log_file ]] && zf_rm -f ${log_file%.log}.out
+}
+
+TRAPINT() {
+    if (( spinner_pid )); then
+        spinner_stop
+    else
+        print
+    fi
+    ui_error "interrupted"
+    exit 130
+}
+
+TRAPTERM() {
+    exit 143
+}
+
 main() {
+    setup_args=("$@")
     # Decide on colors before parsing, so usage errors respect --no-color.
     (( ${argv[(Ie)--no-color]} )) && opts[color]=never
     ui_init
