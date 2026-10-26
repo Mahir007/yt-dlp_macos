@@ -14,6 +14,10 @@ teardown() {
     run -0 "$ZSH_BIN" -n "$SCRIPT"
 }
 
+@test "the script is executable" {
+    assert [ -x "$SCRIPT" ]
+}
+
 @test "started with bash, it runs again under zsh" {
     ln -s "$ZSH_BIN" "$STUBS/zsh"
     run -0 bash "$SCRIPT" --version
