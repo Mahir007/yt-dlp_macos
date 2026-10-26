@@ -8,7 +8,7 @@ test: $(BATS)
 	TEST_ZSH=$(ZSH) $(BATS) test
 
 lint:
-	$(ZSH) -n src/setup-yt-dlp.zsh
+	$(ZSH) -n src/yt-dlp_setup.zsh
 	shellcheck test/test_helper/common.bash test/*.bats
 
 $(BATS):
