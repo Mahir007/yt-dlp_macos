@@ -1,0 +1,43 @@
+#!/bin/bash
+# A fake Homebrew. Installed formulae are files in $FAKE_STATE/brew holding
+# their version. Every call is logged to $FAKE_STATE/calls. Creating
+# $FAKE_STATE/fail/NAME makes installing or uninstalling NAME fail.
+set -u
+state=$FAKE_STATE/brew
+echo "brew $*" >>"$FAKE_STATE/calls"
+
+# The formula name is the last argument; python3 is an alias.
+name=${!#}
+[[ $name == python3 ]] && name=python@3.15
+
+case ${1-} in
+    --version)
+        echo "Homebrew 4.6.3"
+        ;;
+    list)
+        [[ -f $state/$name ]] || exit 1
+        echo "$name $(cat "$state/$name")"
+        ;;
+    install)
+        if [[ -e $FAKE_STATE/fail/$name ]]; then
+            echo "Error: $name: no bottle available!" >&2
+            exit 1
+        fi
+        echo "==> Pouring $name--1.0.bottle.tar.gz"
+        mkdir -p "$state"
+        echo 1.0 >"$state/$name"
+        ;;
+    uninstall)
+        if [[ -e $FAKE_STATE/fail/$name ]]; then
+            echo "Error: Refusing to uninstall $name because it is required by something else" >&2
+            exit 1
+        fi
+        [[ -f $state/$name ]] || { echo "Error: No such keg: $name" >&2; exit 1; }
+        rm "$state/$name"
+        echo "Uninstalling $name..."
+        ;;
+    *)
+        echo "fake brew: unsupported: $*" >&2
+        exit 2
+        ;;
+esac

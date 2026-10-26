@@ -1,0 +1,42 @@
+#!/bin/bash
+# A fake Homebrew Python, for pip. Installed packages are files in
+# $FAKE_STATE/pip holding their version. Every call is logged to
+# $FAKE_STATE/calls. Creating $FAKE_STATE/fail/NAME makes installing NAME
+# fail.
+set -u
+state=$FAKE_STATE/pip
+echo "python3 $*" >>"$FAKE_STATE/calls"
+
+if [[ ${1-} != -m || ${2-} != pip ]]; then
+    echo "fake python3: unsupported: $*" >&2
+    exit 2
+fi
+action=$3 name=${!#}
+
+case $action in
+    show)
+        if [[ ! -f $state/$name ]]; then
+            echo "WARNING: Package(s) not found: $name" >&2
+            exit 1
+        fi
+        printf 'Name: %s\nVersion: %s\nLocation: %s\n' "$name" "$(cat "$state/$name")" "$HOME/Library/Python/3.15/lib/python/site-packages"
+        ;;
+    install)
+        if [[ -e $FAKE_STATE/fail/$name ]]; then
+            echo "ERROR: No matching distribution found for $name" >&2
+            exit 1
+        fi
+        mkdir -p "$state"
+        echo 1.0 >"$state/$name"
+        echo "Successfully installed $name-1.0"
+        ;;
+    uninstall)
+        [[ -f $state/$name ]] || { echo "WARNING: Skipping $name as it is not installed." >&2; exit 0; }
+        rm "$state/$name"
+        echo "  Successfully uninstalled $name-1.0"
+        ;;
+    *)
+        echo "fake python3: unsupported: $*" >&2
+        exit 2
+        ;;
+esac

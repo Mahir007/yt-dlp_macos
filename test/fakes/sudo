@@ -1,0 +1,12 @@
+#!/bin/bash
+# A fake sudo that always has access. Commands it runs are logged to
+# $FAKE_STATE/calls; -v and -k aren't, since the script's background
+# keepalive calls -v at unpredictable times.
+set -u
+args=$*
+[[ ${1-} == -n ]] && shift
+case ${1-} in
+    -v | -k) exit 0 ;;
+esac
+echo "sudo $args" >>"$FAKE_STATE/calls"
+FAKE_AS_ROOT=1 exec "$@"

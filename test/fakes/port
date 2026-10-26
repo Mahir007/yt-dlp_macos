@@ -1,0 +1,60 @@
+#!/bin/bash
+# A fake MacPorts. Installed ports are files in $FAKE_STATE/port holding
+# what `port installed` shows after the name, such as "@1.0_0 (active)".
+# Every call is logged to $FAKE_STATE/calls. Creating $FAKE_STATE/fail/NAME
+# makes installing or uninstalling NAME fail. Changes need the fake sudo.
+set -u
+state=$FAKE_STATE/port
+echo "port $*" >>"$FAKE_STATE/calls"
+
+need_root() {
+    if [[ -z ${FAKE_AS_ROOT-} ]]; then
+        echo "Error: Insufficient privileges to write to MacPorts install prefix." >&2
+        exit 1
+    fi
+}
+
+fail_if_asked() {
+    if [[ -e $FAKE_STATE/fail/$1 ]]; then
+        echo "Error: Failed to $2 $1" >&2
+        exit 1
+    fi
+}
+
+case ${1-} in
+    version)
+        echo "Version: 2.10.5"
+        ;;
+    -q)
+        # port -q installed NAME
+        name=$3
+        [[ -f $state/$name ]] && echo "  $name $(cat "$state/$name")"
+        exit 0
+        ;;
+    -N)
+        action=$2 name=$3
+        need_root
+        case $action in
+            install)
+                fail_if_asked "$name" install
+                echo "--->  Installing $name @1.0_0"
+                mkdir -p "$state"
+                echo "@1.0_0 (active)" >"$state/$name"
+                ;;
+            uninstall)
+                fail_if_asked "$name" uninstall
+                [[ -f $state/$name ]] || { echo "Error: port $name not registered as installed." >&2; exit 1; }
+                rm "$state/$name"
+                echo "--->  Uninstalling $name @1.0_0"
+                ;;
+            *)
+                echo "fake port: unsupported: $*" >&2
+                exit 2
+                ;;
+        esac
+        ;;
+    *)
+        echo "fake port: unsupported: $*" >&2
+        exit 2
+        ;;
+esac
