@@ -32,7 +32,7 @@ fi
 zmodload zsh/zutil      # zparseopts
 zmodload zsh/datetime   # EPOCHREALTIME, strftime
 zmodload zsh/zselect    # sleeping for a fraction of a second
-zmodload -F zsh/files b:zf_mkdir b:zf_rm
+zmodload -F zsh/files b:zf_mkdir b:zf_mv b:zf_rm
 
 typeset -gr SETUP_VERSION=1.0.0
 
@@ -184,6 +184,14 @@ log_open() {
     return 0
 }
 
+# log_note TEXT: add a line to the log, for changes that aren't commands.
+log_note() {
+    log_open
+    local stamp
+    strftime -s stamp %H:%M:%S $EPOCHSECONDS
+    print -r -- "==> [$stamp] $1" >>$log_file
+}
+
 # run_step SUBJECT DOING DONE -- COMMAND...
 #
 # Run COMMAND as one step of a section, as in `run_step ffmpeg installing
@@ -229,7 +237,7 @@ run_step() {
         ui_ok "$subject" "$done"
     else
         ui_fail "$subject" failed
-        (( opts[verbose] )) || ui_tail $out
+        (( opts[verbose] )) || ui_tail "$out"
         ui_detail "Log: ${(D)log_file}"
     fi
     zf_rm -f $out
@@ -458,6 +466,62 @@ macports_uninstall() {
     run_step "$1" uninstalling uninstalled -- sudo -n port -N uninstall $1
 }
 
+# macports_python: print the newest active python3NN port, such as python314.
+macports_python() {
+    local line
+    local -a names=() match mbegin mend
+    for line in ${(f)"$(port -q installed 2>/dev/null)"}; do
+        # "  python314 @3.14.0_0 (active)"
+        if [[ $line == (#b)[[:space:]]#(python3<->)' @'*'(active)'* ]]; then
+            names+=($match[1])
+        fi
+    done
+    (( $#names )) || return 1
+    # Sort by the number in the name, highest first: python310 > python39.
+    print -r -- ${${(On)names}[1]}
+}
+
+# Each `port select` group's choice before this run changed it, such as
+# (python3 none). Uninstalling puts these back.
+typeset -gA port_select_before=()
+
+# macports_select GROUP TARGET: point the `port select` group GROUP, such as
+# python3, at TARGET, as a step.
+macports_select() {
+    local group=$1 target=$2 current
+    # "The currently selected version for 'python3' is 'python314'."
+    current=$(port select --show $group 2>/dev/null)
+    current=${${current%\'*}##*\'}
+    if [[ $current == $target ]]; then
+        ui_ok "$group" "already $target"
+        return 0
+    fi
+    port_select_before[$group]=${current:-none}
+    sudo_begin "MacPorts needs administrator access to change which Python it uses."
+    run_step "$group" selecting "now $target" -- sudo -n port select --set "$group" "$target"
+}
+
+# macports_select_python: make python and python3, and pip and pip3 when
+# py-pip is installed, run MacPorts' newest Python, as steps.
+macports_select_python() {
+    local py group
+    local -i rc=0
+    if ! py=$(macports_python); then
+        ui_skip python "no MacPorts Python to select"
+        return 0
+    fi
+    for group in python python3; do
+        macports_select "$group" "$py" || rc=1
+    done
+    if pkg_version py-pip >/dev/null; then
+        for group in pip pip3; do
+            macports_select "$group" "pip${py#python}" || rc=1
+        done
+    fi
+    rehash
+    return rc
+}
+
 # With Homebrew, yt-dlp's Python packages go into the user's site-packages
 # of Homebrew's Python. Homebrew marks that Python as externally managed,
 # hence --break-system-packages.
@@ -480,6 +544,182 @@ pip_install() {
 pip_uninstall() {
     run_step "$1" uninstalling uninstalled -- \
         $pm_prefix/bin/python3 -m pip uninstall --yes --break-system-packages $1
+}
+
+# pip_user_bin: print where pip --user puts commands for Homebrew's Python,
+# such as /Users/me/Library/Python/3.15/bin.
+pip_user_bin() {
+    local base
+    base=$($pm_prefix/bin/python3 -m site --user-base 2>/dev/null)
+    [[ -n $base ]] || return 1
+    print -r -- $base/bin
+}
+
+# ----------------------------------------------------------------------------
+# The zsh startup file
+# ----------------------------------------------------------------------------
+
+# The script's lines in ~/.zshrc go between these markers.
+typeset -gr RC_BEGIN='# >>> setup-yt-dlp >>>'
+typeset -gr RC_NOTE='# Added by setup-yt-dlp.zsh. Its --uninstall option removes these lines.'
+typeset -gr RC_END='# <<< setup-yt-dlp <<<'
+
+# What rc_rewrite found: a block of the script's lines, and lines that the
+# bash version of the script added.
+typeset -gi rc_had_block=0 rc_had_legacy=0
+
+# A temporary file that file_write hasn't moved into place yet.
+typeset -g file_tmp=''
+
+# rc_file: print the zsh startup file to change. Respects ZDOTDIR, for users
+# who keep their zsh files elsewhere.
+rc_file() {
+    print -r -- ${ZDOTDIR:-$HOME}/.zshrc
+}
+
+# file_read FILE: set REPLY to FILE's exact contents, or to nothing if FILE
+# doesn't exist.
+file_read() {
+    typeset -g REPLY=''
+    [[ -e $1 ]] || return 0
+    # read stops at a NUL byte, which text files don't have, and fails at
+    # the end of the file, which is expected here.
+    IFS= read -rd '' REPLY <$1
+    return 0
+}
+
+# file_write FILE TEXT: replace FILE's contents with TEXT. If FILE is a
+# symlink, the file it points to is written and the link stays. Permissions
+# are kept. The text goes to a temporary file next to it first, so an
+# interruption can't leave FILE half written.
+file_write() {
+    local target=${1:A}
+    file_tmp=$target.setup-yt-dlp-$$
+    if [[ -e $target ]]; then
+        cp -p -- $target $file_tmp || return 1
+    fi
+    { print -rn -- "$2" >|$file_tmp && zf_mv -f -- $file_tmp $target } || return 1
+    file_tmp=''
+}
+
+# rc_rewrite TEXT [LINE...]: set REPLY to TEXT, a zsh startup file, with a
+# block holding LINEs: the existing block is replaced where it is, or a new
+# one appended after a blank line. With no LINEs, removes the block, and the
+# blank line before it. Either way, removes the lines the bash version of
+# the script added. Sets rc_had_block and rc_had_legacy. Fails if a block
+# has no end marker.
+rc_rewrite() {
+    local text=$1
+    shift
+    local -a block=() lines=( "${(@f)text}" ) out=()
+    (( $# )) && block=( "$RC_BEGIN" "$RC_NOTE" "$@" "$RC_END" )
+    local -i i=1 j placed=0
+    rc_had_block=0 rc_had_legacy=0
+
+    while (( i <= $#lines )); do
+        if [[ $lines[i] == "$RC_BEGIN" ]]; then
+            for (( j = i + 1; j <= $#lines; j++ )); do
+                [[ $lines[j] == "$RC_END" ]] && break
+            done
+            (( j > $#lines )) && return 1
+            rc_had_block=1
+            if (( $#block && ! placed )); then
+                out+=( "${block[@]}" )
+                placed=1
+            elif (( $#out )) && [[ -z $out[-1] ]]; then
+                out[-1]=()
+            fi
+            (( i = j + 1 ))
+        elif rc_is_legacy "$lines[i]" "${lines[i+1]-}"; then
+            rc_had_legacy=1
+            if (( $#out )) && [[ -z $out[-1] ]]; then
+                out[-1]=()
+            fi
+            (( i += 2 ))
+        else
+            out+=( "$lines[i]" )
+            (( i++ ))
+        fi
+    done
+
+    text=${(F)out}
+    if (( $#block && ! placed )); then
+        if [[ -n $text ]]; then
+            [[ $text == *$'\n' ]] || text+=$'\n'
+            text+=$'\n'
+        fi
+        text+=${(F)block}$'\n'
+    fi
+    typeset -g REPLY=$text
+}
+
+# rc_is_legacy LINE NEXT: succeed if LINE and NEXT are a pair the bash
+# version of the script added to ~/.zshrc.
+rc_is_legacy() {
+    [[ $1 == '# Suppress Homebrew environment hints' && $2 == 'export HOMEBREW_NO_ENV_HINTS=1' ]] ||
+        [[ $1 == '# Add pip user scripts to PATH' && $2 == 'export PATH="'*'/bin:$PATH"' ]]
+}
+
+# rc_change [LINE...]: rewrite the zsh startup file with rc_rewrite, as a
+# step, and show the LINEs added.
+rc_change() {
+    local file=$(rc_file) old new done
+    local subject=${(D)file}
+    file_read "$file"
+    old=$REPLY
+    if ! rc_rewrite "$old" "$@"; then
+        ui_fail "$subject" "has a '$RC_BEGIN' line with no '$RC_END' after it"
+        ui_detail "Fix the file by hand, then run this again."
+        return 1
+    fi
+    new=$REPLY
+
+    if [[ $new == "$old" ]]; then
+        if (( $# )); then
+            ui_ok "$subject" "already set up"
+        else
+            ui_ok "$subject" "nothing to remove"
+        fi
+        return 0
+    fi
+    if (( $# )); then
+        done=added
+        (( rc_had_block )) && done=updated
+    else
+        done=removed
+    fi
+
+    if (( opts[dry_run] )); then
+        ui_skip "$subject" "would have the setup-yt-dlp lines $done"
+    else
+        if ! file_write $file "$new"; then
+            ui_fail "$subject" "couldn't be written"
+            return 1
+        fi
+        log_note "$subject: setup-yt-dlp lines $done"
+        ui_ok "$subject" "setup-yt-dlp lines $done"
+    fi
+    local line
+    for line in "$@"; do
+        ui_detail "$line"
+    done
+    if (( rc_had_legacy )); then
+        ui_detail "(and the old setup-yt-dlp.sh lines removed)"
+    fi
+    return 0
+}
+
+# homebrew_shell_setup: add Homebrew's lines to the zsh startup file: no
+# environment hints from brew, and pip's user commands on PATH.
+homebrew_shell_setup() {
+    local -a lines=('export HOMEBREW_NO_ENV_HINTS=1')
+    local bin
+    if bin=$(pip_user_bin); then
+        # Written with $HOME, so the line still reads right if the home
+        # folder moves.
+        lines+=( 'export PATH="'${bin/#${(b)HOME}/\$HOME}':$PATH"' )
+    fi
+    rc_change "${lines[@]}"
 }
 
 # ----------------------------------------------------------------------------
@@ -647,6 +887,7 @@ TRAPEXIT() {
     spinner_stop
     sudo_end
     [[ -n $log_file ]] && zf_rm -f ${log_file%.log}.out
+    [[ -n $file_tmp ]] && zf_rm -f -- $file_tmp
 }
 
 TRAPINT() {

@@ -2,7 +2,8 @@
 # A fake MacPorts. Installed ports are files in $FAKE_STATE/port holding
 # what `port installed` shows after the name, such as "@1.0_0 (active)".
 # Every call is logged to $FAKE_STATE/calls. Creating $FAKE_STATE/fail/NAME
-# makes installing or uninstalling NAME fail. Changes need the fake sudo.
+# makes installing or uninstalling NAME fail. `port select` choices are files
+# in $FAKE_STATE/select. Changes need the fake sudo.
 set -u
 state=$FAKE_STATE/port
 echo "port $*" >>"$FAKE_STATE/calls"
@@ -26,10 +27,27 @@ case ${1-} in
         echo "Version: 2.10.5"
         ;;
     -q)
-        # port -q installed NAME
-        name=$3
-        [[ -f $state/$name ]] && echo "  $name $(cat "$state/$name")"
+        # port -q installed [NAME]
+        if [[ -n ${3-} ]]; then
+            [[ -f $state/$3 ]] && echo "  $3 $(cat "$state/$3")"
+        else
+            for file in "$state"/*; do
+                [[ -f $file ]] && echo "  ${file##*/} $(cat "$file")"
+            done
+        fi
         exit 0
+        ;;
+    select)
+        # port select --show GROUP, port select --set GROUP TARGET
+        mkdir -p "$FAKE_STATE/select"
+        group=$3
+        if [[ $2 == --show ]]; then
+            echo "The currently selected version for '$group' is '$(cat "$FAKE_STATE/select/$group" 2>/dev/null || echo none)'."
+        else
+            need_root
+            echo "$4" >"$FAKE_STATE/select/$group"
+            echo "Selecting '$4' for '$group' succeeded. '$4' is now active."
+        fi
         ;;
     -N)
         action=$2 name=$3

@@ -75,6 +75,11 @@ fake_installed() {
     fi
 }
 
+# calls: print the commands the fakes ran.
+calls() {
+    cat "$FAKE_STATE/calls"
+}
+
 # fake_fails NAME: make installing or uninstalling NAME fail.
 fake_fails() {
     mkdir -p "$FAKE_STATE/fail"
