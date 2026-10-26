@@ -1,6 +1,6 @@
 #!/bin/zsh -f
 #
-# yt-dlp_setup: install yt-dlp and its dependencies on macOS with Homebrew
+# setup-yt-dlp: install yt-dlp and its dependencies on macOS with Homebrew
 # or MacPorts, and remove them again with --uninstall.
 #
 # Needs zsh 5.8 or later. macOS 12 Monterey ships 5.8 as /bin/zsh.
@@ -13,19 +13,19 @@ if [ -z "${ZSH_VERSION-}" ]; then
     if [ -f "$0" ]; then
         exec zsh -f "$0" "$@"
     fi
-    echo "yt-dlp_setup: this script needs zsh. Run it with: zsh yt-dlp_setup.zsh" >&2
+    echo "setup-yt-dlp: this script needs zsh. Run it with: zsh setup-yt-dlp.zsh" >&2
     exit 1
 fi
 
 emulate -R zsh
 setopt extended_glob no_unset pipe_fail warn_create_global
-# ~/.zshenv is still read when run as `zsh yt-dlp_setup.zsh`. Drop any
+# ~/.zshenv is still read when run as `zsh setup-yt-dlp.zsh`. Drop any
 # aliases it defined before they can change the code below.
 unalias -m '*'
 
 autoload -Uz is-at-least
 if ! is-at-least 5.8; then
-    print -ru2 -- "yt-dlp_setup: needs zsh 5.8 or later, but this is zsh $ZSH_VERSION."
+    print -ru2 -- "setup-yt-dlp: needs zsh 5.8 or later, but this is zsh $ZSH_VERSION."
     exit 1
 fi
 
@@ -41,7 +41,7 @@ typeset -gr SETUP_VERSION=1.0.0
 if [[ -f $0 ]]; then
     typeset -gr SETUP_PROG=${0:t}
 else
-    typeset -gr SETUP_PROG=yt-dlp_setup.zsh
+    typeset -gr SETUP_PROG=setup-yt-dlp.zsh
 fi
 
 # Settings from the command line, filled in by cli_parse.
@@ -89,7 +89,7 @@ ui_header() {
     if (( opts[dry_run] )); then
         note=" ${c[dim]}(dry run: nothing will be changed)${c[reset]}"
     fi
-    print -r -- "${c[bold]}yt-dlp_setup${c[reset]} ${c[dim]}$SETUP_VERSION${c[reset]}$note"
+    print -r -- "${c[bold]}yt-dlp setup${c[reset]} ${c[dim]}$SETUP_VERSION${c[reset]}$note"
 }
 
 # ui_section TITLE: start a group of steps.
@@ -171,13 +171,13 @@ typeset -g log_file=''
 
 log_open() {
     [[ -n $log_file ]] && return 0
-    local dir=$HOME/Library/Logs/yt-dlp_setup stamp
+    local dir=$HOME/Library/Logs/yt-dlp-setup stamp
     zf_mkdir -p $dir 2>/dev/null || die "couldn't create ${(D)dir}"
     strftime -s stamp %Y%m%d-%H%M%S $EPOCHSECONDS
     log_file=$dir/$stamp.log
     local args=none
     (( $#setup_args )) && args=${(j: :)${(q-)setup_args}}
-    print -r -- "yt-dlp_setup $SETUP_VERSION, arguments: $args" >$log_file
+    print -r -- "yt-dlp setup $SETUP_VERSION, arguments: $args" >$log_file
     # Keep the ten newest logs.
     local -a old=( $dir/*.log(Nom[11,-1]) )
     (( $#old )) && zf_rm -f -- $old
@@ -368,7 +368,7 @@ pm_select() {
         if (( ! opts[yes] )) && ! ui_can_ask; then
             die "both Homebrew and MacPorts are installed; choose one with --manager"
         fi
-        ui_choose "Both Homebrew and MacPorts are installed. Which one should yt-dlp_setup use?" \
+        ui_choose "Both Homebrew and MacPorts are installed. Which one do you want to use?" \
             "Homebrew (recommended)" MacPorts
         local -a choices=(homebrew macports)
         opts[manager]=$choices[REPLY]
@@ -672,7 +672,7 @@ main() {
 
     case $opts[action] in
         help)    cli_usage; return 0 ;;
-        version) print -r -- "yt-dlp_setup $SETUP_VERSION"; return 0 ;;
+        version) print -r -- "setup-yt-dlp $SETUP_VERSION"; return 0 ;;
     esac
 
     preflight

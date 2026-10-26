@@ -12,7 +12,7 @@ common_setup() {
     load test_helper/bats-support/load
     load test_helper/bats-assert/load
 
-    SCRIPT=$BATS_TEST_DIRNAME/../src/yt-dlp_setup.zsh
+    SCRIPT=$BATS_TEST_DIRNAME/../src/setup-yt-dlp.zsh
     FAKES=$BATS_TEST_DIRNAME/fakes
     # Resolved before PATH changes, for detached and in_tty.
     PYTHON=$(command -v python3)

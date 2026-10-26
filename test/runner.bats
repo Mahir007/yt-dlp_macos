@@ -7,7 +7,7 @@
 setup() {
     load test_helper/common
     common_setup
-    LOGS=$HOME/Library/Logs/yt-dlp_setup
+    LOGS=$HOME/Library/Logs/yt-dlp-setup
 }
 
 teardown() {
@@ -74,7 +74,7 @@ ctrl_c_after() {
     refute_line '    line 5'
     assert_line --index 1 '    line 6'
     assert_line --index 10 '    Error: no bottle'
-    assert_line --index 11 --regexp '^    Log: ~/Library/Logs/yt-dlp_setup/[0-9]{8}-[0-9]{6}\.log$'
+    assert_line --index 11 --regexp '^    Log: ~/Library/Logs/yt-dlp-setup/[0-9]{8}-[0-9]{6}\.log$'
     assert_equal "${#lines[@]}" 12
 }
 
@@ -98,7 +98,7 @@ ctrl_c_after() {
     run -1 in_script 'opts[verbose]=1; ui_init; run_step deno installing installed -- sh -c "echo oops; exit 1"'
     assert_line --index 1 '    │ oops'
     assert_line --index 2 '  ✗ deno               failed'
-    assert_line --index 3 --partial '    Log: ~/Library/Logs/yt-dlp_setup/'
+    assert_line --index 3 --partial '    Log: ~/Library/Logs/yt-dlp-setup/'
     assert_equal "${#lines[@]}" 4
 }
 
@@ -111,13 +111,13 @@ ctrl_c_after() {
 
 @test "--dry-run says so in the header" {
     run -0 in_script 'opts[dry_run]=1; ui_init; ui_header'
-    assert_output --regexp '^yt-dlp_setup [0-9.]+ \(dry run: nothing will be changed\)$'
+    assert_output --regexp '^yt-dlp setup [0-9.]+ \(dry run: nothing will be changed\)$'
 }
 
 @test "the log has each command, its output and its status" {
     run -1 in_script 'setup_args=(-v --manager "two words"); run_step a doing done -- echo hello; run_step b doing done -- sh -c "echo bye; exit 1"'
-    run -0 sed -E -e 's/^(yt-dlp_setup) [0-9.]+,/\1 V,/' -e 's/^==> \[[0-9:]{8}\]/==> [T]/' "$LOGS"/*.log
-    assert_output "yt-dlp_setup V, arguments: -v --manager 'two words'
+    run -0 sed -E -e 's/^(yt-dlp setup) [0-9.]+,/\1 V,/' -e 's/^==> \[[0-9:]{8}\]/==> [T]/' "$LOGS"/*.log
+    assert_output "yt-dlp setup V, arguments: -v --manager 'two words'
 ==> [T] echo hello
 hello
 ==> exit status 0 after 0s
