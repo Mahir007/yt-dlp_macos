@@ -3,8 +3,8 @@
 # in DIR (default dist): setup-yt-dlp.tar.xz, holding
 # setup-yt-dlp-VERSION/setup-yt-dlp.zsh and LICENSE, and its SHA-256 in
 # setup-yt-dlp.tar.xz.sha256. The script in the repository says its version
-# is dev; the copy in the archive gets the tag's. Needs GNU tar. Run from
-# the top of the repo.
+# is 0.0.0-dev; the copy in the archive gets the tag's. Needs GNU tar. Run
+# from the top of the repo.
 set -euo pipefail
 
 tag=$1
@@ -21,9 +21,9 @@ name=setup-yt-dlp-$version
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 install -d -m 755 "$work/$name"
-sed "s/^typeset -gr SETUP_VERSION=dev\$/typeset -gr SETUP_VERSION=$version/" "$script" >"$work/$name/setup-yt-dlp.zsh"
+sed "s/^typeset -gr SETUP_VERSION=0\.0\.0-dev\$/typeset -gr SETUP_VERSION=$version/" "$script" >"$work/$name/setup-yt-dlp.zsh"
 if ! grep -qx "typeset -gr SETUP_VERSION=$version" "$work/$name/setup-yt-dlp.zsh"; then
-    echo "error: $script has no 'typeset -gr SETUP_VERSION=dev' line to put the version in" >&2
+    echo "error: $script has no 'typeset -gr SETUP_VERSION=0.0.0-dev' line to put the version in" >&2
     exit 1
 fi
 chmod 755 "$work/$name/setup-yt-dlp.zsh"
