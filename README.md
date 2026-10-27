@@ -37,6 +37,8 @@ Anything you already have is left as it is. If you keep your zsh files in `$ZDOT
 | `-m`, `--manager <name>` | Use `homebrew` or `macports`. Without it, the script uses the one it used before, or the one that's installed, and asks if both are. |
 | `-u`, `--uninstall` | Remove what the script installed. |
 | `-s`, `--status` | Show what's installed. |
+| `-d`, `--downloader` | Only save [YouTube Downloader Pro](#youtube-downloader-pro). Installs nothing. |
+| `-o`, `--output <path>` | Where `--downloader` saves it: a folder, or a file name. The default is `~/Downloads`. |
 | `-n`, `--dry-run` | Show what would be done without changing anything. |
 | `-y`, `--yes` | Don't ask questions. Picks Homebrew when both are installed. |
 | `-v`, `--verbose` | Show the output of brew, port and pip as they run. |
@@ -54,7 +56,13 @@ YouTube Downloader Pro is a menu for downloading audio (MP3 or FLAC), video (MP4
 
 The script fills it in for the package manager it used. Each time it starts, it updates yt-dlp. With MacPorts, it asks for your password only when there's an update.
 
-To get it again, run the script again and choose Repair.
+To save it without installing anything, for example to get it again:
+
+```sh
+./setup-yt-dlp.zsh --downloader
+```
+
+If the file is there already, the script asks before replacing it, or replaces it with `--yes`.
 
 ## Uninstalling
 

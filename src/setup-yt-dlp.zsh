@@ -48,8 +48,9 @@ fi
 
 # Settings from the command line, filled in by cli_parse.
 typeset -gA opts=(
-    action   install    # install, uninstall, status, help or version
+    action   install    # install, uninstall, status, downloader, help or version
     manager  ''         # homebrew or macports; empty means detect
+    output   ''         # where --downloader saves; empty means ~/Downloads
     dry_run  0
     yes      0
     verbose  0
@@ -1181,6 +1182,11 @@ downloader_save() {
         ui_fail "$(ui_path "$file")" "not saved: $(ui_path "$bash") has a space in it"
         return 1
     fi
+    if (( opts[dry_run] )); then
+        ui_skip download "would download $(downloader_url)"
+        ui_skip "$(ui_path "$file")" "would be saved"
+        return 0
+    fi
     downloader_tmp=${TMPDIR:-/tmp}/setup-yt-dlp-$$.command
     if run_step download downloading downloaded -- \
             curl -fsSL --retry 2 -o $downloader_tmp "$(downloader_url)"; then
@@ -1207,6 +1213,21 @@ downloader_save() {
     fi
     log_note "$(ui_path "$file"): YouTube Downloader Pro saved"
     ui_ok "$(ui_path "$file")" saved
+}
+
+# downloader_target: print where --downloader saves: --output, or
+# ~/Downloads. A folder gets the file's usual name in it.
+downloader_target() {
+    local file=${opts[output]:-$HOME/Downloads}
+    # A ~ after --output= isn't expanded by the shell.
+    [[ $file == '~' || $file == '~/'* ]] && file=$HOME${file#\~}
+    file=${file:a}
+    if [[ -d $file ]]; then
+        file=$file/$DOWNLOADER_NAME
+    elif [[ $file != *.command ]]; then
+        file+=.command
+    fi
+    print -r -- $file
 }
 
 # ----------------------------------------------------------------------------
@@ -1494,6 +1515,9 @@ ${c[bold]}Options:${c[reset]}
   -m, --manager <name>  Package manager to use: homebrew or macports
   -u, --uninstall       Remove what this script installed and undo its changes
   -s, --status          Show what is installed, then exit
+  -d, --downloader      Only save YouTube Downloader Pro, installing nothing
+  -o, --output <path>   Where --downloader saves it: a file or a folder
+                        (default: ~/Downloads)
   -n, --dry-run         Show what would be done without changing anything
   -y, --yes             Don't ask questions
   -v, --verbose         Show the output of brew, port and pip
@@ -1518,6 +1542,8 @@ typeset -gra CLI_SPEC=(
     'm:=m' '-manager:=m'
     'u'    '-uninstall=u'
     's'    '-status=s'
+    'd'    '-downloader=d'
+    'o:=o' '-output:=o'
     'n'    '-dry-run=n'
     'y'    '-yes=y'
     'v'    '-verbose=v'
@@ -1577,12 +1603,25 @@ cli_parse() {
         return 0
     fi
 
-    if (( ${+parsed[-u]} && ${+parsed[-s]} )); then
-        cli_fail "--uninstall and --status can't be used together"
+    local -a given=()
+    local action
+    for action in u:--uninstall s:--status d:--downloader; do
+        (( ${+parsed[-${action%%:*}]} )) && given+=(${action#*:})
+    done
+    if (( $#given > 1 )); then
+        cli_fail "${(j: and :)given} can't be used together"
     elif (( ${+parsed[-u]} )); then
         opts[action]=uninstall
     elif (( ${+parsed[-s]} )); then
         opts[action]=status
+    elif (( ${+parsed[-d]} )); then
+        opts[action]=downloader
+    fi
+    if (( ${+parsed[-o]} )); then
+        (( ${+parsed[-d]} )) || cli_fail "--output only goes with --downloader"
+        # --output=PATH arrives as "=PATH".
+        opts[output]=${parsed[-o]#=}
+        [[ -n $opts[output] ]] || cli_fail "option '--output' needs a value"
     fi
     (( ${+parsed[-n]} )) && opts[dry_run]=1
     (( ${+parsed[-y]} )) && opts[yes]=1
@@ -1681,6 +1720,27 @@ cmd_status() {
     status_run
 }
 
+# cmd_downloader: save YouTube Downloader Pro only, for the manager in use,
+# without installing anything.
+cmd_downloader() {
+    state_load
+    use_manager
+    local file=$(downloader_target)
+    if [[ -e $file ]] && (( ! opts[yes] && ! opts[dry_run] )); then
+        ui_can_ask || die "$(ui_path "$file") exists; run with --yes to replace it"
+        print
+        if ! ui_confirm "$(ui_path "$file") exists. Replace it?"; then
+            print -r -- "Not saved."
+            return 0
+        fi
+    fi
+    ui_section "YouTube Downloader Pro"
+    downloader_save "$file" || return 1
+    (( opts[dry_run] )) && return 0
+    print
+    print -r -- "Open $(ui_path "$file") from Finder to start it."
+}
+
 # ----------------------------------------------------------------------------
 # Exit and interrupts
 # ----------------------------------------------------------------------------
@@ -1724,9 +1784,10 @@ main() {
     preflight
     ui_header
     case $opts[action] in
-        install)   cmd_install ;;
-        uninstall) cmd_uninstall ;;
-        status)    cmd_status ;;
+        install)    cmd_install ;;
+        uninstall)  cmd_uninstall ;;
+        status)     cmd_status ;;
+        downloader) cmd_downloader ;;
     esac
 }
 
