@@ -1,7 +1,19 @@
-#!/opt/homebrew/bin/bash
+#!@BASH@
+# shellcheck shell=bash
 
 # YouTube Downloader Pro for macOS
-# Compatible with the Homebrew Bash 4+.
+#
+# A template: setup-yt-dlp.zsh downloads it, fills in the @NAME@ values for
+# the package manager it used, and saves it where you choose. Needs bash 4
+# or later.
+
+# Where the package manager keeps its commands, and which manager it is:
+# homebrew or macports.
+PREFIX=@PREFIX@
+MANAGER=@MANAGER@
+# Opened from Finder, the PATH may not have the manager's commands, which
+# yt-dlp needs to find ffmpeg.
+export PATH="$PREFIX/bin:$PATH"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -36,15 +48,23 @@ FORMAT_KEYS=(1 2 3 4 5)
 check_dependencies() {
     if ! command -v yt-dlp &> /dev/null; then
         error "Error: yt-dlp is not installed or not on your PATH."
-        echo -e "Install it with: ${YELLOW}brew install yt-dlp${NC}"
+        echo -e "Run ${YELLOW}setup-yt-dlp.zsh${NC} again to install it."
         exit 1
     fi
 }
 
 update_ytdlp() {
     print_header "Checking for Updates"
-    brew upgrade -q yt-dlp || true
-    pip3 install -Uq yt-dlp-ejs
+    case $MANAGER in
+        homebrew)
+            brew upgrade -q yt-dlp || true
+            python3 -m pip install --user --break-system-packages -Uq yt-dlp-ejs || true
+            ;;
+        macports)
+            info "MacPorts needs your password to update yt-dlp."
+            sudo port -q selfupdate && sudo port -qN upgrade yt-dlp yt-dlp-ejs || true
+            ;;
+    esac
     echo ""
     sleep 1
 }

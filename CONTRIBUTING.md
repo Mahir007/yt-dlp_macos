@@ -3,7 +3,7 @@
 ## Layout
 
 - `src/` has the setup script.
-- `bin/` has the downloader scripts.
+- `bin/` has the downloader scripts. `youtube-downloader-pro.command` is a template: the setup script downloads it from the release's tag (from `main` for version `0.0.0-dev`) and fills in `@BASH@`, `@PREFIX@` and `@MANAGER@`.
 - `test/` has the bats tests. `test/bats` and `test/test_helper/bats-*` are git submodules, and `test/fakes/` has the fake `brew`, `port`, `python3` and `sudo` they run against.
 - `.github/workflows/` has the CI and release workflows, and `.github/scripts/` the scripts that build a release's archive and notes.
 
