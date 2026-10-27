@@ -31,6 +31,9 @@ common_setup() {
     unset LC_ALL LC_CTYPE
 
     stub sw_vers 'echo 12.7.6'
+    # macOS has a real osascript in /usr/bin. Without this, the downloader
+    # question would be asked on macOS but not on Linux.
+    stub osascript 'exit 1'
 }
 
 # Fail the test if zsh's warn_create_global fired during the last run: a
