@@ -22,6 +22,7 @@ jobs:
   linux:
     name: zsh 5.8 on Linux
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
         with:
@@ -51,6 +52,7 @@ jobs:
   macos:
     name: zsh on macOS 15
     runs-on: macos-15
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
         with:
