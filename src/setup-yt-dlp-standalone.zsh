@@ -1,7 +1,8 @@
 #!/bin/zsh -f
 #
 # setup-yt-dlp-standalone: install yt-dlp_macos, ffmpeg and ffprobe into
-# /usr/local/bin without a package manager, and update them with --update.
+# /usr/local/bin without a package manager, update them with --update, and
+# save YouTube Downloader Pro.
 #
 # Needs zsh 5.7.1 or later. macOS 10.15 Catalina ships 5.7.1 as /bin/zsh.
 #
@@ -63,8 +64,10 @@ typeset -gr EVERMEET_URL=https://evermeet.cx/ffmpeg
 
 # Settings from the command line, filled in by cli_parse.
 typeset -gA opts=(
-    action   install    # install, update, help or version
+    action   install    # install, update, downloader, help or version
+    output   ''         # where --downloader saves; empty means ~/Downloads
     dry_run  0
+    yes      0
     verbose  0
     color    auto       # auto or never
 )
@@ -334,6 +337,76 @@ needs_sudo() {
         dir=${dir:h}
     done
     [[ ! -w $dir ]]
+}
+
+# ----------------------------------------------------------------------------
+# Asking questions
+# ----------------------------------------------------------------------------
+
+# ui_can_ask: succeed if there's a terminal to ask questions on. When the
+# script is piped in (curl ... | zsh), stdin is the script itself, so the
+# questions go to /dev/tty.
+ui_can_ask() {
+    [[ -t 0 ]] || { : </dev/tty } 2>/dev/null
+}
+
+# ui_read NAME: read a line from the terminal into the variable NAME.
+ui_read() {
+    if [[ -t 0 ]]; then
+        read -r $1
+    else
+        read -r $1 </dev/tty
+    fi
+}
+
+# ui_confirm QUESTION: ask a yes or no question, No being the default.
+# Succeeds on yes, which --yes answers without asking.
+ui_confirm() {
+    local answer
+    (( opts[yes] )) && return 0
+    while :; do
+        print -rn -- "$1 [y/N] "
+        if ! ui_read answer; then
+            print
+            die "no answer given"
+        fi
+        case ${(L)answer} in
+            y | yes) return 0 ;;
+            n | no | '') return 1 ;;
+        esac
+    done
+}
+
+# ----------------------------------------------------------------------------
+# Files
+# ----------------------------------------------------------------------------
+
+# A temporary file that file_write hasn't moved into place yet.
+typeset -g file_tmp=''
+
+# file_read FILE: set REPLY to FILE's exact contents, or to nothing if FILE
+# doesn't exist.
+file_read() {
+    typeset -g REPLY=''
+    [[ -e $1 ]] || return 0
+    # read stops at a NUL byte, which text files don't have, and fails at
+    # the end of the file, which is expected here.
+    IFS= read -rd '' REPLY <$1
+    return 0
+}
+
+# file_write FILE TEXT: replace FILE's contents with TEXT. If FILE is a
+# symlink, the file it points to is written and the link stays. Permissions
+# are kept. The text goes to a temporary file next to it first, so an
+# interruption can't leave FILE half written.
+file_write() {
+    local target=${1:A}
+    file_tmp=$target.setup-yt-dlp-$$
+    if [[ -e $target ]]; then
+        cp -p -- $target $file_tmp || return 1
+    fi
+    { print -rn -- "$2" >|$file_tmp && mv -f $file_tmp $target } || return 1
+    file_tmp=''
 }
 
 # ----------------------------------------------------------------------------
@@ -651,7 +724,9 @@ install_run() {
     if [[ $opts[action] == install && ${(v)plan} == *current* ]]; then
         done+=("To update, run the script with --update.")
     fi
-    finish $start $retry $done
+    finish $start $retry $done || return 1
+    [[ $opts[action] == install ]] && downloader_offer
+    return 0
 }
 
 # finish START RETRY DONE...: end the run that began at START. If there were
@@ -682,6 +757,136 @@ finish() {
 }
 
 # ----------------------------------------------------------------------------
+# YouTube Downloader Pro
+# ----------------------------------------------------------------------------
+
+# The standalone downloader is saved as it is: it runs on macOS's own bash
+# and finds yt-dlp_macos on PATH.
+typeset -gr DOWNLOADER_REPO=Mahir007/yt-dlp_macos
+typeset -gr DOWNLOADER_PATH=src/youtube-downloader-pro-standalone.command
+typeset -gr DOWNLOADER_NAME='YouTube Downloader Pro.command'
+
+# The download, until downloader_save has read it.
+typeset -g downloader_tmp=''
+
+# downloader_url: print where to download it from: the release's tag, or
+# main for a script that isn't from a release.
+downloader_url() {
+    local ref=v$SETUP_VERSION
+    [[ $SETUP_VERSION == *-dev ]] && ref=main
+    print -r -- "https://raw.githubusercontent.com/$DOWNLOADER_REPO/$ref/$DOWNLOADER_PATH"
+}
+
+# downloader_offer: ask whether to save YouTube Downloader Pro, and where.
+# Only asks when there's someone to answer and a Mac screen to show Finder's
+# dialog on.
+downloader_offer() {
+    (( opts[dry_run] || opts[yes] )) && return 0
+    { ui_can_ask && (( $+commands[osascript] )) } || return 0
+    local file
+    print
+    ui_confirm "Do you want to download the YouTube Downloader Pro script?" || return 0
+    if ! file=$(downloader_choose); then
+        print -r -- "Not saved."
+        return 0
+    fi
+    ui_section "YouTube Downloader Pro"
+    downloader_save "$file" || return 1
+    print
+    print -r -- "Open $(ui_path "$file") from Finder to start it."
+}
+
+# downloader_choose: show Finder's save dialog, starting in ~/Downloads, and
+# print the file chosen. Fails if it's cancelled.
+downloader_choose() {
+    local dir=$HOME/Downloads file
+    [[ -d $dir ]] || dir=$HOME
+    # `activate` brings the dialog in front of the terminal.
+    file=$(osascript - "$dir" "$DOWNLOADER_NAME" 2>/dev/null <<'EOF'
+on run argv
+    activate
+    set dir to (POSIX file (item 1 of argv)) as alias
+    set chosen to choose file name with prompt "Save YouTube Downloader Pro as:" default name (item 2 of argv) default location dir
+    return POSIX path of chosen
+end run
+EOF
+) || return 1
+    [[ -n $file ]] || return 1
+    # Finder opens a .command file in Terminal.
+    [[ $file == *.command ]] || file+=.command
+    print -r -- $file
+}
+
+# downloader_save FILE: download YouTube Downloader Pro and save it as
+# FILE, as steps.
+downloader_save() {
+    local file=$1 text
+    local -i got=0
+    if (( opts[dry_run] )); then
+        ui_skip download "would download $(downloader_url)"
+        ui_skip "$(ui_path "$file")" "would be saved"
+        return 0
+    fi
+    downloader_tmp=${TMPDIR:-/tmp}/setup-yt-dlp-standalone-$$.command
+    if run_step download downloading downloaded -- \
+            curl -fsSL --retry 2 -o $downloader_tmp "$(downloader_url)"; then
+        file_read $downloader_tmp
+        text=$REPLY
+        got=1
+    fi
+    zf_rm -f -- $downloader_tmp
+    downloader_tmp=''
+    (( got )) || return 1
+
+    if [[ $text != '#!/bin/bash'$'\n'*'YouTube Downloader Pro'* ]]; then
+        ui_fail "$(ui_path "$file")" "not saved: the download isn't YouTube Downloader Pro"
+        return 1
+    fi
+    # The path is absolute, so it can't look like an option. (BSD chmod
+    # takes no -- after the mode.)
+    if ! { file_write "$file" "$text" && chmod 755 "$file" }; then
+        ui_fail "$(ui_path "$file")" "couldn't be written"
+        return 1
+    fi
+    log_note "$(ui_path "$file"): YouTube Downloader Pro saved"
+    ui_ok "$(ui_path "$file")" saved
+}
+
+# downloader_target: print where --downloader saves: the path given with
+# it, or ~/Downloads. A folder gets the file's usual name in it.
+downloader_target() {
+    local file=${opts[output]:-$HOME/Downloads}
+    # A ~ after --downloader= isn't expanded by the shell.
+    [[ $file == '~' || $file == '~/'* ]] && file=$HOME${file#\~}
+    file=${file:a}
+    if [[ -d $file ]]; then
+        file=$file/$DOWNLOADER_NAME
+    elif [[ $file != *.command ]]; then
+        file+=.command
+    fi
+    print -r -- $file
+}
+
+# cmd_downloader: save YouTube Downloader Pro only, without installing
+# anything.
+cmd_downloader() {
+    local file=$(downloader_target)
+    if [[ -e $file ]] && (( ! opts[yes] && ! opts[dry_run] )); then
+        ui_can_ask || die "$(ui_path "$file") exists; run with --yes to replace it"
+        print
+        if ! ui_confirm "$(ui_path "$file") exists. Replace it?"; then
+            print -r -- "Not saved."
+            return 0
+        fi
+    fi
+    ui_section "YouTube Downloader Pro"
+    downloader_save "$file" || return 1
+    (( opts[dry_run] )) && return 0
+    print
+    print -r -- "Open $(ui_path "$file") from Finder to start it."
+}
+
+# ----------------------------------------------------------------------------
 # Command line
 # ----------------------------------------------------------------------------
 
@@ -694,7 +899,11 @@ package manager.
 
 ${c[bold]}Options:${c[reset]}
   -U, --update     Also update them to the latest versions
+  -d, --downloader [<path>]
+                   Only save YouTube Downloader Pro, to the file or
+                   folder <path> or to ~/Downloads. Installs nothing.
   -n, --dry-run    Show what would be done without changing anything
+  -y, --yes        Don't ask questions
   -v, --verbose    Show the output of the downloads
       --no-color   Don't use colors
   -h, --help       Show this help, then exit
@@ -712,16 +921,55 @@ cli_fail() {
 # --update ends up as -U.
 typeset -gra CLI_SPEC=(
     'U'    '-update=U'
+    'd'    '-downloader=d'
     'n'    '-dry-run=n'
+    'y'    '-yes=y'
     'v'    '-verbose=v'
            '-no-color'
     'h'    '-help=h'
     'V'    '-version=V'
 )
 
+# cli_downloader_path ARGS...: take the path out of --downloader PATH,
+# --downloader=PATH or -d PATH into opts[output], and set reply to the other
+# ARGS. zparseopts can't do this itself: it only takes an optional value
+# from the same word. The word after --downloader is its path unless it
+# starts with -, as the script has no other arguments.
+cli_downloader_path() {
+    typeset -ga reply=()
+    local word
+    while (( $# )); do
+        word=$1
+        shift
+        case $word in
+            --)
+                reply+=(-- "$@")
+                break
+                ;;
+            --downloader=*)
+                opts[output]=${word#*=}
+                [[ -n $opts[output] ]] || cli_fail "option '--downloader=' needs a path after the ="
+                reply+=(--downloader)
+                ;;
+            -d | --downloader)
+                reply+=($word)
+                if (( $# )) && [[ $1 != -* ]]; then
+                    opts[output]=$1
+                    shift
+                fi
+                ;;
+            *)
+                reply+=("$word")
+                ;;
+        esac
+    done
+}
+
 # cli_parse ARGS...: fill in opts, or exit on a usage error.
 cli_parse() {
     local -A parsed
+    cli_downloader_path "$@"
+    set -- "${reply[@]}"
     # zsh 5.7.1's zparseopts has no -F. It stops at the first word it
     # doesn't know and leaves it in argv.
     zparseopts -D -M -A parsed -- $CLI_SPEC
@@ -743,8 +991,13 @@ cli_parse() {
         opts[action]=version
         return 0
     fi
+    if (( ${+parsed[-U]} && ${+parsed[-d]} )); then
+        cli_fail "--update and --downloader can't be used together"
+    fi
     (( ${+parsed[-U]} )) && opts[action]=update
+    (( ${+parsed[-d]} )) && opts[action]=downloader
     (( ${+parsed[-n]} )) && opts[dry_run]=1
+    (( ${+parsed[-y]} )) && opts[yes]=1
     (( ${+parsed[-v]} )) && opts[verbose]=1
     (( ${+parsed[--no-color]} )) && opts[color]=never
     return 0
@@ -788,6 +1041,8 @@ TRAPEXIT() {
     sudo_end
     [[ -n $log_file ]] && zf_rm -f ${log_file%.log}.out
     [[ -n $work_dir ]] && zf_rm -rf -- $work_dir
+    [[ -n $file_tmp ]] && zf_rm -f -- $file_tmp
+    [[ -n $downloader_tmp ]] && zf_rm -f -- $downloader_tmp
 }
 
 TRAPINT() {
@@ -818,6 +1073,10 @@ main() {
 
     preflight
     ui_header
+    if [[ $opts[action] == downloader ]]; then
+        cmd_downloader
+        return
+    fi
     if [[ $mac_arch == arm64 ]]; then
         print -r -- "macOS $mac_version on Apple silicon"
     else
