@@ -1,12 +1,12 @@
 #!/bin/bash
-# release-notes.sh TAG REPO SHA256FILE: print the release notes for TAG, in
-# Markdown: how to install it, the commits since the previous v* tag
-# grouped by kind, and the archive's checksum. REPO is owner/name.
+# release-notes.sh TAG REPO SHA256FILE...: print the release notes for TAG,
+# in Markdown: how to install it, the commits since the previous v* tag
+# grouped by kind, and the archives' checksums. REPO is owner/name.
 set -euo pipefail
 
 tag=$1
 repo=$2
-sums=$3
+sums=("${@:3}")
 version=${tag#v}
 url=https://github.com/$repo
 
@@ -86,14 +86,24 @@ EOF
 fi
 
 cat <<EOF
-Installs [yt-dlp](https://github.com/yt-dlp/yt-dlp) and the tools it uses on macOS 12 or later, with Homebrew or MacPorts, and removes them again with \`--uninstall\`.
+Installs [yt-dlp](https://github.com/yt-dlp/yt-dlp) and the tools it uses on macOS.
 
 ## Install
+
+With Homebrew or MacPorts, on macOS 12 or later:
 
 \`\`\`sh
 curl -fsSLO $url/releases/download/$tag/setup-yt-dlp.tar.xz
 tar -xf setup-yt-dlp.tar.xz
 ./setup-yt-dlp.zsh
+\`\`\`
+
+Without a package manager, on macOS 10.15 or later, into \`/usr/local/bin\`:
+
+\`\`\`sh
+curl -fsSLO $url/releases/download/$tag/setup-yt-dlp-standalone.tar.xz
+tar -xf setup-yt-dlp-standalone.tar.xz
+./setup-yt-dlp-standalone.zsh
 \`\`\`
 
 ## What's changed
@@ -120,10 +130,10 @@ cat <<EOF
 <summary>🔒 SHA-256</summary>
 
 \`\`\`
-$(cat "$sums")
+$(cat "${sums[@]}")
 \`\`\`
 
-Check it with \`shasum -a 256 -c setup-yt-dlp.tar.xz.sha256\`.
+Check one with \`shasum -a 256 -c setup-yt-dlp.tar.xz.sha256\`, or with \`setup-yt-dlp-standalone.tar.xz.sha256\`.
 
 </details>
 EOF

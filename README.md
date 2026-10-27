@@ -2,7 +2,7 @@
 
 `setup-yt-dlp.zsh` installs [yt-dlp](https://github.com/yt-dlp/yt-dlp) on macOS with Homebrew or MacPorts, along with ffmpeg, deno and the Python packages yt-dlp can use. It can also show what's installed and remove it again.
 
-It needs macOS 12 or later, and Homebrew or MacPorts.
+It needs macOS 12 or later, and Homebrew or MacPorts. For Macs without either, `setup-yt-dlp-standalone.zsh` installs yt-dlp and ffmpeg on their own: see [Without a package manager](#without-a-package-manager).
 
 ## Quick start
 
@@ -72,6 +72,43 @@ If the file is there already, the script asks before replacing it, or replaces i
 The script lists what it will remove and asks before it starts. It removes only what it installed: packages you had before stay, and so do dependencies and Python packages that something else needs. It takes its block out of `~/.zshrc`, and deletes the file if it created it and nothing else has been added. With MacPorts, `port select` goes back to what it was. A saved YouTube Downloader Pro is left alone.
 
 What the script installed is recorded in `~/Library/Application Support/yt-dlp-setup/state`. If that file is deleted, `--uninstall` has nothing to remove.
+
+## Without a package manager
+
+`setup-yt-dlp-standalone.zsh` downloads yt-dlp_macos, ffmpeg and ffprobe into `/usr/local/bin`, and updates them with `--update`. It needs macOS 10.15 or later.
+
+Download `setup-yt-dlp-standalone.tar.xz` from [Releases](https://github.com/Mahir007/yt-dlp_macos/releases), then, from the folder it's in:
+
+```sh
+tar -xf setup-yt-dlp-standalone.tar.xz
+./setup-yt-dlp-standalone.zsh
+```
+
+yt-dlp is then the `yt-dlp_macos` command.
+
+| | From |
+| - | - |
+| yt-dlp_macos | [yt-dlp's releases](https://github.com/yt-dlp/yt-dlp/releases/latest) |
+| ffmpeg, ffprobe | [martin-riedl.de](https://ffmpeg.martin-riedl.de) on macOS 12 or later. On an Intel Mac with macOS 10.15 or 11, [evermeet.cx](https://evermeet.cx/ffmpeg/). There's no build for Apple silicon on macOS 11, so there it installs yt-dlp_macos alone. |
+
+Downloads are checked against the SHA-256 their site publishes. evermeet.cx doesn't publish one. Each new binary is run once before it replaces the old one.
+
+An ffmpeg or ffprobe the script didn't install, such as Homebrew's, is left alone. If the script can't write to `/usr/local/bin`, it asks for your password.
+
+| Option | |
+| ------ | - |
+| `-U`, `--update` | Also update what's installed to the latest versions. Without it, the script only installs what's missing. |
+| `-d`, `--downloader [<path>]` | Only save YouTube Downloader Pro, to a folder or a file name. The default is `~/Downloads`. Installs nothing. |
+| `-n`, `--dry-run` | Show what would be done without changing anything. |
+| `-y`, `--yes` | Don't ask questions. |
+| `-v`, `--verbose` | Show the output of the downloads. |
+| `--no-color` | Don't use colors. Setting `NO_COLOR` does the same. |
+| `-h`, `--help` | Show the options. |
+| `-V`, `--version` | Show the version. |
+
+At the end of an install, it offers YouTube Downloader Pro, as `setup-yt-dlp.zsh` does. This version runs on macOS's own bash and uses `yt-dlp_macos`. Each time it starts, it runs `yt-dlp_macos -U`. That needs write access to `/usr/local/bin`; if it fails, run the script with `--update` instead.
+
+The log of each run is in `~/Library/Logs/yt-dlp-setup-standalone/`.
 
 ## Troubleshooting
 

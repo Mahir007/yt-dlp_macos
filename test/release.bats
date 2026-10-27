@@ -55,12 +55,27 @@ commit() {
 > typeset -gr SETUP_VERSION=1\.2\.3-beta\.4$'
 }
 
+@test "the standalone archive holds its script, with the tag's version, and the license" {
+    needs_gnu_tar
+    run -0 package v1.2.3-beta.4
+    run -0 tar -tvJf "$BATS_TEST_TMPDIR/dist/setup-yt-dlp-standalone.tar.xz"
+    assert_line --regexp "^-rw-r--r-- 0/0 .* LICENSE$"
+    assert_line --regexp "^-rwxr-xr-x 0/0 .* setup-yt-dlp-standalone\.zsh$"
+    assert_equal "${#lines[@]}" 2
+    tar -xJf "$BATS_TEST_TMPDIR/dist/setup-yt-dlp-standalone.tar.xz" -C "$BATS_TEST_TMPDIR"
+    run -0 "$ZSH_BIN" "$BATS_TEST_TMPDIR/setup-yt-dlp-standalone.zsh" --version
+    assert_output 'setup-yt-dlp-standalone 1.2.3-beta.4'
+    cd "$BATS_TEST_TMPDIR/dist"
+    run -0 sha256sum -c setup-yt-dlp-standalone.tar.xz.sha256
+}
+
 @test "the same commit gives the same archive" {
     needs_gnu_tar
     run -0 package v1.2.3
     mv "$BATS_TEST_TMPDIR/dist" "$BATS_TEST_TMPDIR/first"
     run -0 package v1.2.3
     run -0 cmp "$BATS_TEST_TMPDIR/first/setup-yt-dlp.tar.xz" "$BATS_TEST_TMPDIR/dist/setup-yt-dlp.tar.xz"
+    run -0 cmp "$BATS_TEST_TMPDIR/first/setup-yt-dlp-standalone.tar.xz" "$BATS_TEST_TMPDIR/dist/setup-yt-dlp-standalone.tar.xz"
 }
 
 @test "a tag that isn't a version is refused" {
@@ -85,12 +100,15 @@ commit() {
     commit "Test the second thing" test/a.bats
     git tag v0.2.0-beta.1
     printf '%s  setup-yt-dlp.tar.xz\n' 0123abcd >"$BATS_TEST_TMPDIR/sums"
+    printf '%s  setup-yt-dlp-standalone.tar.xz\n' 4567ef01 >"$BATS_TEST_TMPDIR/standalone-sums"
 
-    run -0 "$ROOT/.github/scripts/release-notes.sh" v0.2.0-beta.1 me/repo "$BATS_TEST_TMPDIR/sums"
+    run -0 "$ROOT/.github/scripts/release-notes.sh" v0.2.0-beta.1 me/repo "$BATS_TEST_TMPDIR/sums" "$BATS_TEST_TMPDIR/standalone-sums"
     assert_line --index 0 '> [!WARNING]'
     assert_line --index 1 '> This is a pre-release, for trying things out before 0.2.0 is final.'
     assert_line 'curl -fsSLO https://github.com/me/repo/releases/download/v0.2.0-beta.1/setup-yt-dlp.tar.xz'
     assert_line './setup-yt-dlp.zsh'
+    assert_line 'curl -fsSLO https://github.com/me/repo/releases/download/v0.2.0-beta.1/setup-yt-dlp-standalone.tar.xz'
+    assert_line './setup-yt-dlp-standalone.zsh'
     assert_output --regexp '### ✨ New
 
 - Add a second thing \([0-9a-f]+\)
@@ -111,6 +129,7 @@ commit() {
     refute_output --partial 'Rename a thing'
     assert_line '**Full changelog:** [v0.1.0...v0.2.0-beta.1](https://github.com/me/repo/compare/v0.1.0...v0.2.0-beta.1)'
     assert_line '0123abcd  setup-yt-dlp.tar.xz'
+    assert_line '4567ef01  setup-yt-dlp-standalone.tar.xz'
 }
 
 @test "the notes for a final release have no pre-release warning" {
