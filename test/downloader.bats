@@ -241,3 +241,62 @@ YouTube Downloader Pro.command"
 
 Do you want to download the YouTube Downloader Pro script\\? \\[y/N\\] Not saved\\.$"
 }
+
+@test "--downloader saves it to ~/Downloads and installs nothing" {
+    use_manager homebrew
+    run -0 setup_script --downloader
+    assert_line --regexp '^  ✓ ~/Downloads/YouTube Downloader Pro\.command +saved$'
+    assert_line 'Open ~/Downloads/YouTube Downloader Pro.command from Finder to start it.'
+    assert [ -x "$HOME/Downloads/YouTube Downloader Pro.command" ]
+    run -1 grep -E 'install|upgrade' "$FAKE_STATE/calls"
+    assert [ ! -e "$HOME/Library/Application Support/yt-dlp-setup/state" ]
+    assert [ ! -e "$HOME/.zshrc" ]
+}
+
+@test "--output takes a folder or a file" {
+    use_manager homebrew
+    mkdir "$HOME/Apps"
+    run -0 setup_script --downloader --output "$HOME/Apps"
+    assert [ -x "$HOME/Apps/YouTube Downloader Pro.command" ]
+    run -0 setup_script -d -o "$HOME/Apps/yt.command"
+    assert [ -x "$HOME/Apps/yt.command" ]
+    # .command is added, so Finder opens it in Terminal.
+    run -0 setup_script -d -o "$HOME/Apps/pro"
+    assert [ -x "$HOME/Apps/pro.command" ]
+    # The shell doesn't expand a ~ after =.
+    run -0 setup_script --downloader '--output=~/Apps/tilde.command'
+    assert [ -x "$HOME/Apps/tilde.command" ]
+}
+
+@test "--downloader replaces a file only when told to" {
+    use_manager homebrew
+    echo mine >"$SAVED"
+    run -1 --separate-stderr setup_script --downloader -o "$SAVED"
+    assert_stderr "error: ~/Downloads/yt.command exists; run with --yes to replace it"
+    run -0 cat "$SAVED"
+    assert_output mine
+    run -0 answer 'n\n' "main --no-color --downloader -o $SAVED"
+    # shellcheck disable=SC2088  # a ~ the script printed
+    assert_output --partial '~/Downloads/yt.command exists. Replace it? [y/N] Not saved.'
+    run -0 cat "$SAVED"
+    assert_output mine
+    run -0 setup_script --downloader -o "$SAVED" --yes
+    run -0 head -1 "$SAVED"
+    assert_output "#!$PREFIX/bin/bash"
+}
+
+@test "--downloader --dry-run saves nothing" {
+    use_manager homebrew
+    run -0 setup_script --downloader --dry-run
+    assert_line '  – download           would download https://raw.githubusercontent.com/Mahir007/yt-dlp_macos/main/src/youtube-downloader-pro.command'
+    assert_line --regexp '^  – ~/Downloads/YouTube Downloader Pro\.command +would be saved$'
+    assert [ ! -e "$HOME/curl-url" ]
+    assert [ ! -e "$HOME/Downloads/YouTube Downloader Pro.command" ]
+}
+
+@test "--downloader with MacPorts fills in MacPorts' values" {
+    use_manager macports
+    run -0 setup_script --downloader
+    run -0 grep '^MANAGER=' "$HOME/Downloads/YouTube Downloader Pro.command"
+    assert_output MANAGER=macports
+}
