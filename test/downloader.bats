@@ -253,34 +253,34 @@ Do you want to download the YouTube Downloader Pro script\\? \\[y/N\\] Not saved
     assert [ ! -e "$HOME/.zshrc" ]
 }
 
-@test "--output takes a folder or a file" {
+@test "--downloader takes a folder or a file" {
     use_manager homebrew
     mkdir "$HOME/Apps"
-    run -0 setup_script --downloader --output "$HOME/Apps"
+    run -0 setup_script --downloader "$HOME/Apps"
     assert [ -x "$HOME/Apps/YouTube Downloader Pro.command" ]
-    run -0 setup_script -d -o "$HOME/Apps/yt.command"
+    run -0 setup_script -d "$HOME/Apps/yt.command"
     assert [ -x "$HOME/Apps/yt.command" ]
     # .command is added, so Finder opens it in Terminal.
-    run -0 setup_script -d -o "$HOME/Apps/pro"
+    run -0 setup_script -d "$HOME/Apps/pro"
     assert [ -x "$HOME/Apps/pro.command" ]
     # The shell doesn't expand a ~ after =.
-    run -0 setup_script --downloader '--output=~/Apps/tilde.command'
+    run -0 setup_script '--downloader=~/Apps/tilde.command'
     assert [ -x "$HOME/Apps/tilde.command" ]
 }
 
 @test "--downloader replaces a file only when told to" {
     use_manager homebrew
     echo mine >"$SAVED"
-    run -1 --separate-stderr setup_script --downloader -o "$SAVED"
+    run -1 --separate-stderr setup_script --downloader "$SAVED"
     assert_stderr "error: ~/Downloads/yt.command exists; run with --yes to replace it"
     run -0 cat "$SAVED"
     assert_output mine
-    run -0 answer 'n\n' "main --no-color --downloader -o $SAVED"
+    run -0 answer 'n\n' "main --no-color --downloader $SAVED"
     # shellcheck disable=SC2088  # a ~ the script printed
     assert_output --partial '~/Downloads/yt.command exists. Replace it? [y/N] Not saved.'
     run -0 cat "$SAVED"
     assert_output mine
-    run -0 setup_script --downloader -o "$SAVED" --yes
+    run -0 setup_script --downloader "$SAVED" --yes
     run -0 head -1 "$SAVED"
     assert_output "#!$PREFIX/bin/bash"
 }
