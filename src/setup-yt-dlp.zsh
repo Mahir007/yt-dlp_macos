@@ -563,10 +563,9 @@ typeset -gr RC_BEGIN='# >>> setup-yt-dlp >>>'
 typeset -gr RC_NOTE='# Added by setup-yt-dlp.zsh. Its --uninstall option removes these lines.'
 typeset -gr RC_END='# <<< setup-yt-dlp <<<'
 
-# What rc_rewrite found: a block of the script's lines, and lines that the
-# bash version of the script added. rc_change sets rc_created when it
-# creates the file.
-typeset -gi rc_had_block=0 rc_had_legacy=0 rc_created=0
+# Whether rc_rewrite found a block of the script's lines, and whether
+# rc_change created the file.
+typeset -gi rc_had_block=0 rc_created=0
 
 # A temporary file that file_write hasn't moved into place yet.
 typeset -g file_tmp=''
@@ -605,16 +604,15 @@ file_write() {
 # rc_rewrite TEXT [LINE...]: set REPLY to TEXT, a zsh startup file, with a
 # block holding LINEs: the existing block is replaced where it is, or a new
 # one appended after a blank line. With no LINEs, removes the block, and the
-# blank line before it. Either way, removes the lines the bash version of
-# the script added. Sets rc_had_block and rc_had_legacy. Fails if a block
-# has no end marker.
+# blank line before it. Sets rc_had_block. Fails if a block has no end
+# marker.
 rc_rewrite() {
     local text=$1
     shift
     local -a block=() lines=( "${(@f)text}" ) out=()
     (( $# )) && block=( "$RC_BEGIN" "$RC_NOTE" "$@" "$RC_END" )
     local -i i=1 j placed=0
-    rc_had_block=0 rc_had_legacy=0
+    rc_had_block=0
 
     while (( i <= $#lines )); do
         if [[ $lines[i] == "$RC_BEGIN" ]]; then
@@ -630,12 +628,6 @@ rc_rewrite() {
                 out[-1]=()
             fi
             (( i = j + 1 ))
-        elif rc_is_legacy "$lines[i]" "${lines[i+1]-}"; then
-            rc_had_legacy=1
-            if (( $#out )) && [[ -z $out[-1] ]]; then
-                out[-1]=()
-            fi
-            (( i += 2 ))
         else
             out+=( "$lines[i]" )
             (( i++ ))
@@ -651,13 +643,6 @@ rc_rewrite() {
         text+=${(F)block}$'\n'
     fi
     typeset -g REPLY=$text
-}
-
-# rc_is_legacy LINE NEXT: succeed if LINE and NEXT are a pair the bash
-# version of the script added to ~/.zshrc.
-rc_is_legacy() {
-    [[ $1 == '# Suppress Homebrew environment hints' && $2 == 'export HOMEBREW_NO_ENV_HINTS=1' ]] ||
-        [[ $1 == '# Add pip user scripts to PATH' && $2 == 'export PATH="'*'/bin:$PATH"' ]]
 }
 
 # rc_change [LINE...]: rewrite the zsh startup file with rc_rewrite, as a
@@ -704,9 +689,6 @@ rc_change() {
     for line in "$@"; do
         ui_detail "$line"
     done
-    if (( rc_had_legacy )); then
-        ui_detail "(and the old setup-yt-dlp.sh lines removed)"
-    fi
     return 0
 }
 
