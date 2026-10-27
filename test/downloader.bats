@@ -28,12 +28,27 @@ teardown() {
     common_teardown
 }
 
+# bash4: print a bash 4 or later, which the saved script needs. On macOS the
+# bash running the tests is often /bin/bash 3.2, so try Homebrew's too.
+bash4() {
+    local candidate
+    for candidate in "$BASH" /opt/homebrew/bin/bash /usr/local/bin/bash; do
+        # shellcheck disable=SC2016  # expanded by that bash
+        if [[ -x $candidate ]] && (($("$candidate" -c 'echo "${BASH_VERSINFO[0]}"') >= 4)); then
+            echo "$candidate"
+            return 0
+        fi
+    done
+    return 1
+}
+
 # use_manager homebrew|macports: the fake manager, with bash in its prefix.
-# The bash running the tests stands in for it.
+# A bash 4 from this machine stands in for it, or failing that the bash
+# running the tests.
 use_manager() {
     use_fake "$1"
     PREFIX=$BATS_TEST_TMPDIR/$1
-    ln -s "$BASH" "$PREFIX/bin/bash"
+    ln -s "$(bash4 || echo "$BASH")" "$PREFIX/bin/bash"
 }
 
 # save MANAGER: save the downloader to $SAVED with MANAGER's values.
@@ -102,7 +117,7 @@ MANAGER=macports"
 }
 
 @test "the saved script runs and updates yt-dlp with Homebrew" {
-    ((BASH_VERSINFO[0] >= 4)) || skip "needs bash 4 or later to run the saved script"
+    bash4 >/dev/null || skip "needs bash 4 or later to run the saved script"
     use_manager homebrew
     # In the prefix, where the saved script's PATH finds it.
     printf '#!/bin/sh\n' >"$PREFIX/bin/yt-dlp"
@@ -136,14 +151,14 @@ esac'
 }
 
 @test "with MacPorts up to date, the saved script needs no password" {
-    ((BASH_VERSINFO[0] >= 4)) || skip "needs bash 4 or later to run the saved script"
+    bash4 >/dev/null || skip "needs bash 4 or later to run the saved script"
     run_macports 1.0
     assert_output --partial 'yt-dlp is up to date.'
     run -1 grep '^sudo' "$FAKE_STATE/calls"
 }
 
 @test "with a MacPorts update, the saved script updates only what changed" {
-    ((BASH_VERSINFO[0] >= 4)) || skip "needs bash 4 or later to run the saved script"
+    bash4 >/dev/null || skip "needs bash 4 or later to run the saved script"
     run_macports 2.0
     assert_output --partial "There's an update for yt-dlp. MacPorts needs your password to install it."
     run -0 grep '^sudo' "$FAKE_STATE/calls"
