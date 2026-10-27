@@ -22,13 +22,14 @@ jobs:
           # The notes list the commits since the previous release tag.
           fetch-depth: 0
 
-      - name: Build the archive
+      - name: Build the archives
         run: .github/scripts/package.sh "$GITHUB_REF_NAME"
 
       - name: Write the release notes
         run: |
           .github/scripts/release-notes.sh "$GITHUB_REF_NAME" "$GITHUB_REPOSITORY" \
-            dist/setup-yt-dlp.tar.xz.sha256 >"$RUNNER_TEMP/notes.md"
+            dist/setup-yt-dlp.tar.xz.sha256 dist/setup-yt-dlp-standalone.tar.xz.sha256 \
+            >"$RUNNER_TEMP/notes.md"
           cat "$RUNNER_TEMP/notes.md" >>"$GITHUB_STEP_SUMMARY"
 
       # A version with a hyphen, such as 1.0.0-beta.1, is a pre-release.
@@ -42,6 +43,7 @@ jobs:
           fi
           gh release create "$GITHUB_REF_NAME" \
             dist/setup-yt-dlp.tar.xz dist/setup-yt-dlp.tar.xz.sha256 \
+            dist/setup-yt-dlp-standalone.tar.xz dist/setup-yt-dlp-standalone.tar.xz.sha256 \
             --title "setup-yt-dlp ${GITHUB_REF_NAME#v}" \
             --notes-file "$RUNNER_TEMP/notes.md" \
             --verify-tag "${flags[@]}"
