@@ -10,7 +10,7 @@ Download `setup-yt-dlp.tar.xz` from [Releases](https://github.com/Mahir007/yt-dl
 
 ```sh
 tar -xf setup-yt-dlp.tar.xz
-./setup-yt-dlp-*/setup-yt-dlp.zsh
+./setup-yt-dlp.zsh
 ```
 
 When it's done, open a new terminal window to use yt-dlp.

@@ -93,7 +93,7 @@ Installs [yt-dlp](https://github.com/yt-dlp/yt-dlp) and the tools it uses on mac
 \`\`\`sh
 curl -fsSLO $url/releases/download/$tag/setup-yt-dlp.tar.xz
 tar -xf setup-yt-dlp.tar.xz
-./setup-yt-dlp-$version/setup-yt-dlp.zsh
+./setup-yt-dlp.zsh
 \`\`\`
 
 ## What's changed
