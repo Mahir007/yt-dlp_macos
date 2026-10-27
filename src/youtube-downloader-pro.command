@@ -168,7 +168,8 @@ main_menu() {
             exit 0
         fi
 
-        if [[ -n "${FORMATS[$choice]:-}" ]]; then
+        # An empty key is an error in bash, not a miss.
+        if [[ -n "$choice" && -n "${FORMATS[$choice]:-}" ]]; then
             local entry="${FORMATS[$choice]}"
             download_loop "${entry%%|*}" "${entry#*|}"
         else
