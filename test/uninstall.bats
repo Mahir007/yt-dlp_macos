@@ -241,7 +241,8 @@ none'
     use_fake homebrew
     run -0 setup_script
     rm "$FAKE_STATE/brew/deno"
-    run -0 answer '\n'
+    # The second Enter says no to downloading YouTube Downloader Pro.
+    run -0 answer '\n\n'
     assert_output --partial 'yt-dlp 1.0 is set up already. What do you want to do?
   1) Repair: install anything that'\''s missing
   2) Uninstall
