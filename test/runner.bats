@@ -197,3 +197,12 @@ bye
     assert_output ''
     assert [ ! -e "$SUDO_LOG" ]
 }
+
+@test "paths show ~ for the home folder, and spaces as they are" {
+    run -0 in_script 'ui_path "$HOME/Library/Application Support/x"; ui_path $HOME; ui_path ${HOME}2/x; ui_path /tmp/a'
+    # shellcheck disable=SC2088  # a ~ the script printed
+    assert_output "~/Library/Application Support/x
+~
+$HOME"'2/x
+/tmp/a'
+}
