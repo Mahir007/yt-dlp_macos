@@ -39,6 +39,8 @@ answer() {
     assert [ -x "$SAVED" ]
     run -0 cmp "$DOWNLOADER" "$SAVED"
     assert [ ! -e "$BIN" ]
+    run -0 find "$TMPDIR" -mindepth 1
+    assert_output ''
 }
 
 @test "--downloader takes a folder or a file" {
@@ -94,8 +96,9 @@ answer() {
     rm -r "$FAKE_WEB/raw.githubusercontent.com"
     run -1 setup_script --downloader
     assert_line --regexp '^  ✗ download +failed$'
+    assert_line --regexp "^  The log has the details: $TMPDIR/setup-yt-dlp-standalone-[0-9-]+\\.log\$"
     assert [ ! -e "$SAVED" ]
-    run -0 find "$TMPDIR" -name '*.command'
+    run -0 find "$TMPDIR" -mindepth 1 ! -name '*.log'
     assert_output ''
 }
 

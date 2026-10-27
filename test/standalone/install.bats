@@ -34,11 +34,11 @@ teardown() {
     refute_line --partial evermeet
 }
 
-@test "the binaries are executable, and the downloads are cleaned up" {
+@test "the binaries are executable, and nothing else is left behind" {
     run -0 setup_script
     run -0 find "$BIN" -type f ! -perm -755
     assert_output ''
-    run -0 ls -A "$TMPDIR"
+    run -0 find "$TMPDIR" "$HOME" -mindepth 1
     assert_output ''
 }
 
@@ -139,8 +139,8 @@ teardown() {
     assert_line '  ✓ yt-dlp_macos   installed 2026.10.26'
     assert_line "  ✗ ffmpeg         couldn't find the latest version"
     assert_line "    the latest ffprobe couldn't be found"
-    assert_line --partial '  The log has the details: ~/Library/Logs/yt-dlp-setup-standalone/'
-    run -0 cat "$HOME"/Library/Logs/yt-dlp-setup-standalone/*.log
+    assert_line --regexp "^  The log has the details: $TMPDIR/setup-yt-dlp-standalone-[0-9-]+\.log\$"
+    run -0 cat "$TMPDIR"/setup-yt-dlp-standalone-*.log
     assert_line --partial "couldn't look up the latest versions at riedl"
     assert_line 'curl: (22) The requested URL returned error: 404'
 }

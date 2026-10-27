@@ -199,22 +199,29 @@ spinner_stop() {
 # Running commands
 # ----------------------------------------------------------------------------
 
-# The log of this run, created by the first step.
+# The log of this run, created by the first step. It goes in the temporary
+# folder and is deleted at the end, unless log_keep keeps it: the script
+# leaves nothing behind but what it installs.
 typeset -g log_file=''
+typeset -gi log_kept=0
 
 log_open() {
     [[ -n $log_file ]] && return 0
-    local dir=$HOME/Library/Logs/yt-dlp-setup-standalone stamp
-    zf_mkdir -p $dir 2>/dev/null || die "couldn't create $(ui_path "$dir")"
+    local stamp
     strftime -s stamp %Y%m%d-%H%M%S $EPOCHSECONDS
-    log_file=$dir/$stamp.log
+    log_file=${TMPDIR:-/tmp}
+    log_file=${log_file%/}/setup-yt-dlp-standalone-$stamp-$$.log
     local args=none
     (( $#setup_args )) && args=${(j: :)${(q-)setup_args}}
-    print -r -- "yt-dlp standalone setup $SETUP_VERSION, arguments: $args" >$log_file
-    # Keep the ten newest logs.
-    local -a old=( $dir/*.log(Nom[11,-1]) )
-    (( $#old )) && zf_rm -f -- $old
-    return 0
+    print -r -- "yt-dlp standalone setup $SETUP_VERSION, arguments: $args" >$log_file ||
+        die "couldn't create $(ui_path "$log_file")"
+}
+
+# log_keep: keep the log after the script ends, and say where it is.
+log_keep() {
+    [[ -n $log_file ]] || return 0
+    (( log_kept )) || print -r -- "  The log has the details: $(ui_path "$log_file")"
+    log_kept=1
 }
 
 # log_note TEXT: add a line to the log, for what isn't a step's output.
@@ -743,7 +750,7 @@ finish() {
         for line in $problems; do
             print -r -- "    $line"
         done
-        [[ -n $log_file ]] && print -r -- "  The log has the details: $(ui_path "$log_file")"
+        log_keep
         print -r -- "  $retry"
         return 1
     else
@@ -791,7 +798,11 @@ downloader_offer() {
         return 0
     fi
     ui_section "YouTube Downloader Pro"
-    downloader_save "$file" || return 1
+    if ! downloader_save "$file"; then
+        print
+        log_keep
+        return 1
+    fi
     print
     print -r -- "Open $(ui_path "$file") from Finder to start it."
 }
@@ -880,7 +891,11 @@ cmd_downloader() {
         fi
     fi
     ui_section "YouTube Downloader Pro"
-    downloader_save "$file" || return 1
+    if ! downloader_save "$file"; then
+        print
+        log_keep
+        return 1
+    fi
     (( opts[dry_run] )) && return 0
     print
     print -r -- "Open $(ui_path "$file") from Finder to start it."
@@ -1039,7 +1054,10 @@ preflight() {
 TRAPEXIT() {
     spinner_stop
     sudo_end
-    [[ -n $log_file ]] && zf_rm -f ${log_file%.log}.out
+    if [[ -n $log_file ]]; then
+        zf_rm -f ${log_file%.log}.out
+        (( log_kept )) || zf_rm -f $log_file
+    fi
     [[ -n $work_dir ]] && zf_rm -rf -- $work_dir
     [[ -n $file_tmp ]] && zf_rm -f -- $file_tmp
     [[ -n $downloader_tmp ]] && zf_rm -f -- $downloader_tmp

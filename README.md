@@ -108,7 +108,7 @@ An ffmpeg or ffprobe the script didn't install, such as Homebrew's, is left alon
 
 At the end of an install, it offers YouTube Downloader Pro, as `setup-yt-dlp.zsh` does. This version runs on macOS's own bash and uses `yt-dlp_macos`. Each time it starts, it runs `yt-dlp_macos -U`. That needs write access to `/usr/local/bin`; if it fails, run the script with `--update` instead.
 
-The log of each run is in `~/Library/Logs/yt-dlp-setup-standalone/`.
+The script writes nothing outside `/usr/local/bin` except the YouTube Downloader Pro you choose to save. If something fails, it keeps a log in the temporary folder and shows its path.
 
 ## Troubleshooting
 
