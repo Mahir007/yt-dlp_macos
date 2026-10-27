@@ -1,10 +1,13 @@
 name: CI
 
 on:
+  # Branches only: a release tag runs this through release.yml instead.
   push:
+    branches: ['**']
     paths-ignore:
       - '**.md'
       - LICENSE
+  workflow_call:
   workflow_dispatch:
 
 # A newer push to the same branch cancels the run for the older one.

@@ -9,7 +9,7 @@ test: $(BATS)
 
 lint:
 	$(ZSH) -n src/setup-yt-dlp.zsh
-	shellcheck test/test_helper/common.bash test/*.bats test/fakes/*
+	shellcheck test/test_helper/common.bash test/*.bats test/fakes/* .github/scripts/*.sh
 
 $(BATS):
 	@echo "The test submodules are missing. Run: git submodule update --init" >&2

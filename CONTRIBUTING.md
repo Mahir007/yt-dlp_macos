@@ -4,7 +4,8 @@
 
 - `src/` has the setup script.
 - `bin/` has the downloader scripts.
-- `test/` has the bats tests. `test/bats` and `test/test_helper/bats-*` are git submodules.
+- `test/` has the bats tests. `test/bats` and `test/test_helper/bats-*` are git submodules, and `test/fakes/` has the fake `brew`, `port`, `python3` and `sudo` they run against.
+- `.github/workflows/` has the CI and release workflows, and `.github/scripts/` the scripts that build a release's archive and notes.
 
 ## Running the tests
 
@@ -16,7 +17,7 @@ make lint
 
 `make test` uses `/bin/zsh`. To test another zsh, pass its path: `make test ZSH=/opt/homebrew/bin/zsh`. `make lint` needs shellcheck.
 
-The tests run the script with a temporary `HOME` and stub commands first on `PATH`, so they don't change the machine they run on. The tests that fake a terminal need python3.
+The tests run the script with a temporary `HOME` and a `PATH` of only the fakes, `/usr/bin` and `/bin`, so they don't change the machine they run on or use its own package managers. The tests that fake a terminal need python3, and the ones for the release archive need GNU tar, so they're skipped on macOS.
 
 ## zsh 5.8
 
@@ -30,3 +31,16 @@ curl -fsSLO https://archive.debian.org/debian/pool/main/z/zsh/zsh_5.8-6+deb11u1_
 sudo dpkg -i zsh-common_5.8-6+deb11u1_all.deb zsh_5.8-6+deb11u1_amd64.deb
 sudo apt-mark hold zsh zsh-common
 ```
+
+## Releasing
+
+Set `SETUP_VERSION` in `src/setup-yt-dlp.zsh` and commit it, then push a tag for that version:
+
+```sh
+git tag -a v1.0.0-beta.2 -m "setup-yt-dlp 1.0.0-beta.2"
+git push origin v1.0.0-beta.2
+```
+
+The release workflow runs the tests, then publishes a release with `setup-yt-dlp.tar.xz` and its checksum. It stops if the tag and `SETUP_VERSION` differ. A version with a hyphen, such as `1.0.0-beta.2`, becomes a pre-release.
+
+The notes list the commits since the previous `v` tag. A subject starting with Add or Install goes under New, one starting with Fix under Fixes, and the rest under Changes. Commits that only touch tests, CI or this file go in a collapsed section, and a commit that was reverted is left out along with its revert.
