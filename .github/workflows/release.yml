@@ -1,0 +1,47 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    uses: ./.github/workflows/ci.yml
+
+  release:
+    needs: test
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The notes list the commits since the previous release tag.
+          fetch-depth: 0
+
+      - name: Build the archive
+        run: .github/scripts/package.sh "$GITHUB_REF_NAME"
+
+      - name: Write the release notes
+        run: |
+          .github/scripts/release-notes.sh "$GITHUB_REF_NAME" "$GITHUB_REPOSITORY" \
+            dist/setup-yt-dlp.tar.xz.sha256 >"$RUNNER_TEMP/notes.md"
+          cat "$RUNNER_TEMP/notes.md" >>"$GITHUB_STEP_SUMMARY"
+
+      # A version with a hyphen, such as 1.0.0-beta.1, is a pre-release.
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          flags=()
+          if [[ $GITHUB_REF_NAME == *-* ]]; then
+            flags=(--prerelease)
+          fi
+          gh release create "$GITHUB_REF_NAME" \
+            dist/setup-yt-dlp.tar.xz dist/setup-yt-dlp.tar.xz.sha256 \
+            --title "setup-yt-dlp ${GITHUB_REF_NAME#v}" \
+            --notes-file "$RUNNER_TEMP/notes.md" \
+            --verify-tag "${flags[@]}"
