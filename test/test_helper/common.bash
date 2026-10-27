@@ -7,13 +7,17 @@
 # zsh 5.8 there to match macOS 12.
 ZSH_BIN=${TEST_ZSH:-/bin/zsh}
 
+# The top of the repository, found from this file, so the tests in
+# test/standalone can use it too.
+TEST_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+
 common_setup() {
     bats_require_minimum_version 1.5.0
-    load test_helper/bats-support/load
-    load test_helper/bats-assert/load
+    load "$TEST_ROOT/test/test_helper/bats-support/load"
+    load "$TEST_ROOT/test/test_helper/bats-assert/load"
 
-    SCRIPT=$BATS_TEST_DIRNAME/../src/setup-yt-dlp.zsh
-    FAKES=$BATS_TEST_DIRNAME/fakes
+    SCRIPT=$TEST_ROOT/src/setup-yt-dlp.zsh
+    FAKES=$TEST_ROOT/test/fakes
     # Resolved before PATH changes, for detached and in_tty.
     PYTHON=$(command -v python3)
 
