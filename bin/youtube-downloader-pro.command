@@ -62,7 +62,9 @@ update_ytdlp() {
             ;;
         macports)
             info "MacPorts needs your password to update yt-dlp."
-            sudo port -q selfupdate && sudo port -qN upgrade yt-dlp yt-dlp-ejs || true
+            if sudo port -q selfupdate; then
+                sudo port -qN upgrade yt-dlp yt-dlp-ejs || true
+            fi
             ;;
     esac
     echo ""
