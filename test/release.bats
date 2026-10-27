@@ -142,3 +142,33 @@ commit() {
     refute_output --partial 'pre-release'
     assert_line '**Full changelog:** [all commits](https://github.com/me/repo/commits/v1.0.0)'
 }
+
+@test "the notes for a final release list everything since the last final release" {
+    git init -q "$BATS_TEST_TMPDIR/repo"
+    cd "$BATS_TEST_TMPDIR/repo"
+    commit "Add the first thing" src/a
+    git tag v1.0.0-beta.1
+    commit "Add a second thing" src/a
+    git tag v1.0.0
+    commit "Add a third thing" src/a
+    git tag v1.1.0-beta.1
+    commit "Add a fourth thing" src/a
+    git tag v1.1.0
+    : >"$BATS_TEST_TMPDIR/sums"
+
+    run -0 "$ROOT/.github/scripts/release-notes.sh" v1.0.0 me/repo "$BATS_TEST_TMPDIR/sums"
+    assert_line --regexp '^- Add the first thing \([0-9a-f]+\)$'
+    assert_line --regexp '^- Add a second thing \([0-9a-f]+\)$'
+    assert_line '**Full changelog:** [all commits](https://github.com/me/repo/commits/v1.0.0)'
+
+    run -0 "$ROOT/.github/scripts/release-notes.sh" v1.1.0 me/repo "$BATS_TEST_TMPDIR/sums"
+    refute_output --partial 'Add a second thing'
+    assert_line --regexp '^- Add a third thing \([0-9a-f]+\)$'
+    assert_line --regexp '^- Add a fourth thing \([0-9a-f]+\)$'
+    assert_line '**Full changelog:** [v1.0.0...v1.1.0](https://github.com/me/repo/compare/v1.0.0...v1.1.0)'
+
+    # A pre-release still lists only what's new since the tag before it.
+    run -0 "$ROOT/.github/scripts/release-notes.sh" v1.1.0-beta.1 me/repo "$BATS_TEST_TMPDIR/sums"
+    refute_output --partial 'Add a second thing'
+    assert_line '**Full changelog:** [v1.0.0...v1.1.0-beta.1](https://github.com/me/repo/compare/v1.0.0...v1.1.0-beta.1)'
+}
