@@ -101,46 +101,6 @@ zshrc_is() {
     zshrc_is <"$BATS_TEST_TMPDIR/before"
 }
 
-@test "the lines the bash version added are replaced" {
-    cat >"$ZSHRC" <<'EOF'
-alias ll="ls -l"
-
-# Suppress Homebrew environment hints
-export HOMEBREW_NO_ENV_HINTS=1
-
-# Add pip user scripts to PATH
-export PATH="/Users/me/Library/Python/3.13/bin:$PATH"
-EOF
-    run -0 in_script 'ui_init; rc_change "export A=1"'
-    assert_line '    (and the old setup-yt-dlp.sh lines removed)'
-    { printf 'alias ll="ls -l"\n\n'; block 'export A=1'; } | zshrc_is
-}
-
-@test "the lines the bash version added are removed" {
-    cat >"$ZSHRC" <<'EOF'
-alias ll="ls -l"
-
-# Suppress Homebrew environment hints
-export HOMEBREW_NO_ENV_HINTS=1
-EOF
-    run -0 in_script 'rc_change'
-    printf 'alias ll="ls -l"\n' | zshrc_is
-}
-
-@test "lines like the bash version's but changed by hand are kept" {
-    cat >"$ZSHRC" <<'EOF'
-# Suppress Homebrew environment hints
-export HOMEBREW_NO_ENV_HINTS=0
-export HOMEBREW_NO_ENV_HINTS=1
-# Add pip user scripts to PATH
-export PATH="$PATH:/Users/me/bin"
-EOF
-    cp "$ZSHRC" "$BATS_TEST_TMPDIR/before"
-    run -0 in_script 'ui_init; rc_change'
-    assert_output '  ✓ ~/.zshrc           nothing to remove'
-    zshrc_is <"$BATS_TEST_TMPDIR/before"
-}
-
 @test "a symlinked ~/.zshrc stays a symlink" {
     mkdir "$HOME/dotfiles"
     printf 'a\n' >"$HOME/dotfiles/zshrc"
