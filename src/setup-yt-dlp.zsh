@@ -36,7 +36,7 @@ zmodload -F zsh/files b:zf_mkdir b:zf_mv b:zf_rm b:zf_rmdir
 
 # The release workflow writes the tag's version here, in the copy it
 # packages.
-typeset -gr SETUP_VERSION=dev
+typeset -gr SETUP_VERSION=0.0.0-dev
 
 # Name to show in messages. $0 isn't a regular file when the script comes
 # from a pipe or a process substitution such as `zsh <(curl ...)`.

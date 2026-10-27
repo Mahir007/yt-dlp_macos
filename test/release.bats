@@ -51,7 +51,7 @@ commit() {
     # The version is all that differs from the script in the repository.
     run -1 diff "$ROOT/src/setup-yt-dlp.zsh" "$BATS_TEST_TMPDIR/setup-yt-dlp-1.2.3-beta.4/setup-yt-dlp.zsh"
     assert_output --regexp '^[0-9]+c[0-9]+
-< typeset -gr SETUP_VERSION=dev
+< typeset -gr SETUP_VERSION=0.0.0-dev
 ---
 > typeset -gr SETUP_VERSION=1\.2\.3-beta\.4$'
 }
