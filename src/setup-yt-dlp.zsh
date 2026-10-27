@@ -32,7 +32,7 @@ fi
 zmodload zsh/zutil      # zparseopts
 zmodload zsh/datetime   # EPOCHREALTIME, strftime
 zmodload zsh/zselect    # sleeping for a fraction of a second
-zmodload -F zsh/files b:zf_mkdir b:zf_mv b:zf_rm
+zmodload -F zsh/files b:zf_mkdir b:zf_mv b:zf_rm b:zf_rmdir
 
 typeset -gr SETUP_VERSION=1.0.0
 
@@ -347,6 +347,24 @@ ui_choose() {
     typeset -g REPLY=$answer
 }
 
+# ui_confirm QUESTION: ask a yes or no question, No being the default.
+# Succeeds on yes, which --yes answers without asking.
+ui_confirm() {
+    local answer
+    (( opts[yes] )) && return 0
+    while :; do
+        print -rn -- "$1 [y/N] "
+        if ! ui_read answer; then
+            print
+            die "no answer given"
+        fi
+        case ${(L)answer} in
+            y | yes) return 0 ;;
+            n | no | '') return 1 ;;
+        esac
+    done
+}
+
 # ----------------------------------------------------------------------------
 # Package managers
 # ----------------------------------------------------------------------------
@@ -426,6 +444,21 @@ pkg_install() { ${opts[manager]}_install "$@" }
 # pkg_uninstall NAME: uninstall package NAME as a step.
 pkg_uninstall() { ${opts[manager]}_uninstall "$@" }
 
+# pkg_uninstall_dependencies NAME...: uninstall packages that came along as
+# dependencies, as one step.
+pkg_uninstall_dependencies() { ${opts[manager]}_uninstall_dependencies "$@" }
+
+# pkg_list: print every installed package, one per line.
+pkg_list() { ${opts[manager]}_list }
+
+# pkg_installed_name NAME: print the name package NAME is installed under,
+# such as python@3.15 for Homebrew's python3.
+pkg_installed_name() { ${opts[manager]}_installed_name "$@" }
+
+# pkg_unneeded: print the packages installed as dependencies that nothing
+# installed needs any more, one per line.
+pkg_unneeded() { ${opts[manager]}_unneeded }
+
 homebrew_version() {
     # "ffmpeg 7.1_4", or "python@3.15 3.15.1" for the alias python3.
     local -a words=( ${=$(brew list --formula --versions $1 2>/dev/null)} )
@@ -439,6 +472,30 @@ homebrew_install() {
 
 homebrew_uninstall() {
     run_step "$1" uninstalling uninstalled -- brew uninstall --formula $1
+}
+
+homebrew_uninstall_dependencies() {
+    run_step dependencies uninstalling "$# uninstalled" -- brew uninstall --formula "$@"
+}
+
+homebrew_installed_name() {
+    local -a words=( ${=$(brew list --formula --versions $1 2>/dev/null)} )
+    print -r -- ${words[1]:-$1}
+}
+
+homebrew_list() {
+    brew list --formula -1 2>/dev/null
+    return 0
+}
+
+homebrew_unneeded() {
+    # "==> Would autoremove 2 unneeded formulae:", then a name per line.
+    # This counts what would become unneeded once those go.
+    local line
+    for line in ${(f)"$(brew autoremove --dry-run 2>/dev/null)"}; do
+        [[ $line == '==>'* ]] || print -r -- $line
+    done
+    return 0
 }
 
 macports_version() {
@@ -465,6 +522,37 @@ macports_uninstall() {
     run_step "$1" uninstalling uninstalled -- sudo -n port -N uninstall $1
 }
 
+macports_uninstall_dependencies() {
+    sudo_begin "MacPorts needs administrator access to remove packages."
+    run_step dependencies uninstalling "$# uninstalled" -- sudo -n port -N uninstall "$@"
+}
+
+macports_installed_name() {
+    print -r -- $1
+}
+
+macports_list() {
+    local line
+    local -a match mbegin mend
+    for line in ${(f)"$(port -q installed 2>/dev/null)"}; do
+        # "  ffmpeg @7.1_0+gpl2 (active)"
+        if [[ $line == (#b)[[:space:]]#([^[:space:]]##)' @'*'(active)'* ]]; then
+            print -r -- $match[1]
+        fi
+    done
+    return 0
+}
+
+macports_unneeded() {
+    # "py314-pip   @26.2.2_0". Unlike Homebrew's list, this doesn't count
+    # what would become unneeded once those go.
+    local line
+    for line in ${(f)"$(port -q echo leaves 2>/dev/null)"}; do
+        print -r -- ${${line##[[:space:]]#}%%[[:space:]]*}
+    done
+    return 0
+}
+
 # macports_python: print the newest active python3NN port, such as python314.
 macports_python() {
     local line
@@ -484,10 +572,10 @@ macports_python() {
 # (python3 none). Uninstalling puts these back.
 typeset -gA port_select_before=()
 
-# macports_select GROUP TARGET: point the `port select` group GROUP, such as
-# python3, at TARGET, as a step.
+# macports_select GROUP TARGET [DONE]: point the `port select` group GROUP,
+# such as python3, at TARGET, as a step. DONE is what the step says after.
 macports_select() {
-    local group=$1 target=$2 current
+    local group=$1 target=$2 done=${3:-now $2} current
     # "The currently selected version for 'python3' is 'python314'."
     current=$(port select --show $group 2>/dev/null)
     current=${${current%\'*}##*\'}
@@ -497,7 +585,7 @@ macports_select() {
     fi
     port_select_before[$group]=${current:-none}
     sudo_begin "MacPorts needs administrator access to change which Python it uses."
-    run_step "$group" selecting "now $target" -- sudo -n port select --set "$group" "$target"
+    run_step "$group" selecting "$done" -- sudo -n port select --set "$group" "$target"
 }
 
 # macports_select_python: make python and python3, and pip and pip3 when
@@ -543,6 +631,21 @@ pip_install() {
 pip_uninstall() {
     run_step "$1" uninstalling uninstalled -- \
         $pm_prefix/bin/python3 -m pip uninstall --yes --break-system-packages $1
+}
+
+# pip_required_by NAME: print the installed packages that need NAME, one per
+# line.
+pip_required_by() {
+    local line
+    for line in ${(f)"$($pm_prefix/bin/python3 -m pip show $1 2>/dev/null)"}; do
+        # "Required-by: requests, yt-dlp-ejs"
+        if [[ $line == 'Required-by:'* ]]; then
+            line=${line#Required-by:}
+            print -rl -- ${(s:,:)line//[[:space:]]/}
+            return 0
+        fi
+    done
+    return 0
 }
 
 # pip_user_bin: print where pip --user puts commands for Homebrew's Python,
@@ -645,10 +748,16 @@ rc_rewrite() {
     typeset -g REPLY=$text
 }
 
-# rc_change [LINE...]: rewrite the zsh startup file with rc_rewrite, as a
-# step, and show the LINEs added.
+# rc_change [LINE...]: rc_edit the zsh startup file.
 rc_change() {
-    local file=$(rc_file) old new done
+    rc_edit "$(rc_file)" "$@"
+}
+
+# rc_edit FILE [LINE...]: rewrite FILE, a zsh startup file, with
+# rc_rewrite, as a step, and show the LINEs added.
+rc_edit() {
+    local file=$1 old new done
+    shift
     local subject=${(D)file}
     file_read "$file"
     old=$REPLY
@@ -713,6 +822,7 @@ homebrew_shell_setup() {
 # removes only that. KEY=VALUE lines, in the order things happened:
 #   manager=homebrew           the package manager used
 #   package=ffmpeg             a package the script installed
+#   dependency=x265            a package that came with one of those
 #   pip=certifi                a package pip added to the user's site-packages
 #   zshrc=/Users/me/.zshrc     a zsh startup file the script added lines to
 #   created=/Users/me/.zshrc   a file the script created
@@ -742,12 +852,37 @@ state_values() {
     return 0
 }
 
+# state_has KEY VALUE: succeed if VALUE is recorded for KEY.
+state_has() {
+    (( ${state[(Ie)$1=$2]} ))
+}
+
+# state_has_installed: succeed if there's anything to uninstall.
+state_has_installed() {
+    local -a left=( ${state:#manager=*} )
+    (( $#left ))
+}
+
 # state_add KEY VALUE: record VALUE for KEY, unless it's there already, and
-# save the state file. Does nothing with --dry-run.
+# save the state file. Does nothing with --dry-run, as do the other changes
+# below.
 state_add() {
     (( opts[dry_run] )) && return 0
-    (( ${state[(Ie)$1=$2]} )) && return 0
+    state_has $1 $2 && return 0
     state+=("$1=$2")
+    state_save
+}
+
+# state_remove KEY VALUE: forget VALUE for KEY, and save the state file.
+state_remove() {
+    (( opts[dry_run] )) && return 0
+    local -i i=${state[(Ie)$1=$2]}
+    (( i )) || return 0
+    state[i]=()
+    state_save
+}
+
+state_save() {
     local file=$(state_file)
     if ! { zf_mkdir -p ${file:h} 2>/dev/null &&
            file_write $file "# Written by setup-yt-dlp.zsh, and read by its --uninstall option.
@@ -756,6 +891,50 @@ ${(F)state}
 " }; then
         die "couldn't save ${(D)file}"
     fi
+}
+
+# state_delete: remove the state file, and its folder if that's empty.
+state_delete() {
+    (( opts[dry_run] )) && return 0
+    local file=$(state_file)
+    zf_rm -f -- $file
+    zf_rmdir ${file:h} 2>/dev/null
+    state=()
+    return 0
+}
+
+# ----------------------------------------------------------------------------
+# Ending a run
+# ----------------------------------------------------------------------------
+
+# What went wrong during the run, for the summary at the end.
+typeset -ga problems=()
+
+# finish START RETRY DONE...: end the run that began at START. If there were
+# problems, lists them, says how to try again with RETRY, and fails.
+# Otherwise prints the DONE lines, the first after "Done in 2m 5s.".
+finish() {
+    local took=$(ui_duration $(( EPOCHREALTIME - $1 ))) retry=$2 line
+    shift 2
+    print
+    if (( opts[dry_run] )); then
+        print -r -- "Dry run finished. Nothing was changed."
+    elif (( $#problems )); then
+        print -r -- "${c[red]}${sym[fail]}${c[reset]} ${c[bold]}Finished in $took, with problems:${c[reset]}"
+        for line in $problems; do
+            print -r -- "    $line"
+        done
+        [[ -n $log_file ]] && print -r -- "  The log has the details: ${(D)log_file}"
+        print -r -- "  $retry"
+        return 1
+    else
+        print -r -- "${c[green]}${sym[ok]}${c[reset]} ${c[bold]}Done in $took.${c[reset]} $1"
+        shift
+        for line; do
+            print -r -- "  $line"
+        done
+    fi
+    return 0
 }
 
 # ----------------------------------------------------------------------------
@@ -771,22 +950,41 @@ typeset -gra MACPORTS_PACKAGES=(ffmpeg AtomicParsley py-pip deno)
 typeset -gra PIP_PACKAGES=(websockets requests mutagen pycryptodomex curl-cffi yt-dlp-ejs)
 typeset -gra MACPORTS_PY_PACKAGES=(py-websockets py-requests py-mutagen py-pycryptodomex py-curl-cffi yt-dlp-ejs)
 
-# What went wrong during the run, for the summary at the end.
-typeset -ga problems=()
+# The packages installed before the latest install, to tell which
+# dependencies it brought along.
+typeset -ga pkg_seen=()
+typeset -gi pkg_seen_taken=0
 
 # install_package NAME [ARGS...]: install package NAME, passing ARGS to the
-# manager, unless it's installed already. Records it when this run installs
-# it.
+# manager, unless it's installed already. Records it, and the dependencies
+# it brings along, when this run installs it.
 install_package() {
-    local version
+    local version name
+    local -i rc=0
     if version=$(pkg_version $1); then
         ui_ok "$1" "already installed ${c[dim]}($version)${c[reset]}"
-    elif pkg_install "$@"; then
+        return 0
+    fi
+    if (( ! opts[dry_run] && ! pkg_seen_taken )); then
+        pkg_seen=( ${(f)"$(pkg_list)"} )
+        pkg_seen_taken=1
+    fi
+    if pkg_install "$@"; then
         state_add package $1
     else
         problems+=("$1 couldn't be installed")
-        return 1
+        rc=1
     fi
+    # Even a failed install can leave dependencies behind.
+    if (( ! opts[dry_run] )); then
+        local own=$(pkg_installed_name $1)
+        local -a now=( ${(f)"$(pkg_list)"} )
+        for name in ${now:|pkg_seen}; do
+            [[ $name == "$own" ]] || state_add dependency $name
+        done
+        pkg_seen=( $now )
+    fi
+    return rc
 }
 
 # pip_user_packages: print the packages in the user's site-packages of
@@ -855,27 +1053,314 @@ install_settings() {
     return 0
 }
 
-# install_summary START: say how the run that began at START went, and fail
-# if anything went wrong.
-install_summary() {
-    local took=$(ui_duration $(( EPOCHREALTIME - $1 ))) problem version
+# install_run: install everything, then sum up.
+install_run() {
+    local name version
+    local -F start=$EPOCHREALTIME
+    state_add manager $opts[manager]
+
+    ui_section Packages
+    case $opts[manager] in
+        homebrew)
+            for name in $HOMEBREW_PACKAGES; do
+                install_package $name
+            done
+            ui_section "Python packages"
+            install_pip_packages
+            ui_section yt-dlp
+            install_package yt-dlp
+            ;;
+        macports)
+            for name in $MACPORTS_PACKAGES; do
+                install_package $name
+            done
+            ui_section "Python packages"
+            for name in $MACPORTS_PY_PACKAGES; do
+                install_package $name
+            done
+            ui_section yt-dlp
+            # Without the ffmpeg variant, as the bash version did, since
+            # ffmpeg is installed above.
+            install_package yt-dlp -ffmpeg
+            ;;
+    esac
+    ui_section Settings
+    install_settings
+
+    version=$(pkg_version yt-dlp)
+    finish $start "Run the script again to retry." \
+        "yt-dlp${version:+ $version} is installed." "Open a new terminal window to start using it."
+}
+
+# ----------------------------------------------------------------------------
+# Uninstalling
+# ----------------------------------------------------------------------------
+
+# pip_names NAME...: print NAMEs the way pip compares them, lowercase and
+# with runs of -, _ and . as one -, so curl_cffi matches curl-cffi.
+pip_names() {
+    (( $# )) && print -rl -- ${(L)@//[-_.]##/-}
+    return 0
+}
+
+# uninstall_plan: say what uninstalling will remove.
+uninstall_plan() {
+    local -a packages=( ${(Oa)${(f)"$(state_values package)"}} )
+    local -a pips=( ${(Oa)${(f)"$(state_values pip)"}} )
+    local -a deps=( ${(f)"$(state_values dependency)"} )
+    local -a files=( ${(f)"$(state_values zshrc)"} )
+    local -a selects=( ${(f)"$(state_values select)"} )
+    local file
     print
-    if (( opts[dry_run] )); then
-        print -r -- "Dry run finished. Nothing was changed."
-    elif (( $#problems )); then
-        print -r -- "${c[red]}${sym[fail]}${c[reset]} ${c[bold]}Finished in $took, with problems:${c[reset]}"
-        for problem in $problems; do
-            print -r -- "    $problem"
-        done
-        [[ -n $log_file ]] && print -r -- "  The log has the details: ${(D)log_file}"
-        print -r -- "  Run the script again to retry."
-        return 1
-    else
-        version=$(pkg_version yt-dlp)
-        print -r -- "${c[green]}${sym[ok]}${c[reset]} ${c[bold]}Done in $took.${c[reset]} yt-dlp${version:+ $version} is installed."
-        print -r -- "  Open a new terminal window to start using it."
+    print -r -- "This removes what setup-yt-dlp installed with $PM_TITLE[$opts[manager]]:"
+    (( $#packages )) && print -rf '  %-16s %s\n' Packages "${(j:, :)packages}"
+    (( $#pips )) && print -rf '  %-16s %s\n' "Python packages" "${(j:, :)pips}"
+    if (( $#deps == 1 )); then
+        print -rf '  %-16s %s\n' Dependencies "1 that came with them, unless something else needs it"
+    elif (( $#deps )); then
+        print -rf '  %-16s %s\n' Dependencies "$#deps that came with them, unless something else needs them"
+    fi
+    for file in $files; do
+        print -rf '  %-16s %s\n' Settings "the setup-yt-dlp lines in ${(D)file}"
+    done
+    (( $#selects )) && print -rf '  %-16s %s\n' Settings "MacPorts' ${(j:, :)${(@)selects%%=*}} choices go back to what they were"
+    return 0
+}
+
+# uninstall_created FILE: delete FILE, which the script created, if all that
+# was in it was the script's lines.
+uninstall_created() {
+    state_has created "$1" || return 0
+    file_read "$1"
+    rc_rewrite "$REPLY" || return 0
+    if [[ -n ${REPLY//[[:space:]]/} ]]; then
+        state_remove created "$1"
+    elif (( opts[dry_run] )); then
+        ui_skip "${(D)1}" "would be deleted, as setup-yt-dlp created it"
+    elif zf_rm -f -- "$1"; then
+        log_note "${(D)1}: deleted"
+        ui_ok "${(D)1}" "deleted, as setup-yt-dlp created it"
+        state_remove created "$1"
     fi
     return 0
+}
+
+uninstall_settings() {
+    local -a files=( ${(Oa)${(f)"$(state_values zshrc)"}} ) selects=( ${(f)"$(state_values select)"} )
+    local file entry
+    (( $#files + $#selects )) || return 0
+    ui_section Settings
+    for file in $files; do
+        if rc_edit "$file"; then
+            uninstall_created "$file"
+            state_remove zshrc "$file"
+        else
+            problems+=("the setup-yt-dlp lines in ${(D)file} couldn't be removed")
+        fi
+    done
+    # An entry is GROUP=EARLIER, such as python3=none.
+    for entry in $selects; do
+        if macports_select ${entry%%=*} ${entry#*=} "back to ${entry#*=}"; then
+            state_remove select "$entry"
+        else
+            problems+=("MacPorts' ${entry%%=*} choice couldn't be put back")
+        fi
+    done
+    return 0
+}
+
+# uninstall_pip_packages: uninstall the recorded pip packages, keeping any
+# that a package the script didn't install needs.
+uninstall_pip_packages() {
+    local -a pips=( ${(Oa)${(f)"$(state_values pip)"}} ) ours others
+    local name
+    (( $#pips )) || return 0
+    ui_section "Python packages"
+    ours=( ${(f)"$(pip_names $pips)"} )
+    for name in $pips; do
+        if ! pip_version $name >/dev/null; then
+            ui_ok $name "already uninstalled"
+            state_remove pip $name
+            continue
+        fi
+        others=( ${(f)"$(pip_names ${(f)"$(pip_required_by $name)"})"} )
+        others=( ${others:|ours} )
+        if (( $#others )); then
+            ui_skip $name "kept: ${(j:, :)others} needs it"
+            state_remove pip $name
+        elif pip_uninstall $name; then
+            state_remove pip $name
+        else
+            problems+=("$name couldn't be uninstalled")
+        fi
+    done
+    return 0
+}
+
+# uninstall_packages: uninstall the recorded packages, newest first, then
+# the dependencies they brought along that nothing needs any more.
+uninstall_packages() {
+    local -a packages=( ${(Oa)${(f)"$(state_values package)"}} ) deps
+    local name
+    deps=( ${(f)"$(state_values dependency)"} )
+    (( $#packages + $#deps )) || return 0
+    ui_section Packages
+    for name in $packages; do
+        if ! pkg_version $name >/dev/null; then
+            ui_ok $name "already uninstalled"
+            state_remove package $name
+        elif pkg_uninstall $name; then
+            state_remove package $name
+        else
+            problems+=("$name couldn't be uninstalled")
+        fi
+    done
+    uninstall_dependencies
+}
+
+# uninstall_dependencies: uninstall the recorded dependencies that the
+# manager says nothing needs any more. MacPorts only lists what's unneeded
+# right now, so this goes round until nothing more is.
+uninstall_dependencies() {
+    local -a deps=( ${(f)"$(state_values dependency)"} ) unneeded installed kept
+    local name
+    local -i round
+    (( $#deps )) || return 0
+    if (( opts[dry_run] )); then
+        ui_skip dependencies "would remove any of the $#deps that nothing else needs"
+        return 0
+    fi
+    for (( round = 1; round <= 10; round++ )); do
+        unneeded=( ${(f)"$(pkg_unneeded)"} )
+        unneeded=( ${unneeded:*deps} )
+        (( $#unneeded )) || break
+        if ! pkg_uninstall_dependencies $unneeded; then
+            problems+=("some dependencies couldn't be uninstalled")
+            break
+        fi
+        ui_detail "${(j:, :)unneeded}"
+        for name in $unneeded; do
+            state_remove dependency $name
+        done
+    done
+    # What's left is gone already, or something else needs it. With the
+    # packages gone, there's no reason to remember it.
+    deps=( ${(f)"$(state_values dependency)"} )
+    installed=( ${(f)"$(pkg_list)"} )
+    kept=( ${deps:*installed} )
+    (( $#kept )) && ui_skip dependencies "kept $#kept that something else needs"
+    if [[ -z $(state_values package) ]]; then
+        for name in $deps; do
+            state_remove dependency $name
+        done
+    fi
+    return 0
+}
+
+# uninstall_run: say what will go, ask, and remove it.
+uninstall_run() {
+    uninstall_plan
+    if (( ! opts[dry_run] )); then
+        if (( ! opts[yes] )) && ! ui_can_ask; then
+            die "uninstalling needs a yes; run with --yes to go ahead without a terminal"
+        fi
+        if ! ui_confirm "Uninstall these?"; then
+            print -r -- "Nothing was changed."
+            return 0
+        fi
+    fi
+    local -F start=$EPOCHREALTIME
+    uninstall_settings
+    uninstall_pip_packages
+    uninstall_packages
+    state_has_installed || state_delete
+    finish $start "Run with --uninstall again to retry." \
+        "Everything setup-yt-dlp installed is removed."
+}
+
+# ----------------------------------------------------------------------------
+# Status
+# ----------------------------------------------------------------------------
+
+# status_package pkg|pip NAME: show whether package NAME is installed, and
+# fail if it isn't. pkg is a package from the manager; pip, from pip.
+status_package() {
+    local kind=$1 name=$2 version note=''
+    if ! version=$(${kind}_version $name); then
+        ui_fail "$name" missing
+        return 1
+    fi
+    if (( $#state )); then
+        local -a recorded=( ${(f)"$(state_values package)"} )
+        if [[ $kind == pip ]]; then
+            recorded=( ${(f)"$(pip_names ${(f)"$(state_values pip)"})"} )
+            name=$(pip_names $name)
+        fi
+        (( ${recorded[(Ie)$name]} )) ||
+            note=" ${c[dim]}· not installed by setup-yt-dlp${c[reset]}"
+    fi
+    ui_ok "$2" "$version$note"
+}
+
+# status_run: show what's installed, and fail if anything is missing.
+status_run() {
+    local name group current
+    local -i missing=0
+    ui_section Packages
+    case $opts[manager] in
+        homebrew)
+            for name in $HOMEBREW_PACKAGES; do
+                status_package pkg $name || (( missing++ ))
+            done
+            ui_section "Python packages"
+            for name in $PIP_PACKAGES; do
+                status_package pip $name || (( missing++ ))
+            done
+            ;;
+        macports)
+            for name in $MACPORTS_PACKAGES; do
+                status_package pkg $name || (( missing++ ))
+            done
+            ui_section "Python packages"
+            for name in $MACPORTS_PY_PACKAGES; do
+                status_package pkg $name || (( missing++ ))
+            done
+            ;;
+    esac
+    ui_section yt-dlp
+    status_package pkg yt-dlp || (( missing++ ))
+
+    ui_section Settings
+    case $opts[manager] in
+        homebrew)
+            local file=$(rc_file)
+            file_read $file
+            if rc_rewrite "$REPLY" && (( rc_had_block )); then
+                ui_ok "${(D)file}" "has the setup-yt-dlp lines"
+            else
+                ui_fail "${(D)file}" "doesn't have the setup-yt-dlp lines"
+                (( missing++ ))
+            fi
+            ;;
+        macports)
+            for group in python python3 pip pip3; do
+                current=$(port select --show $group 2>/dev/null)
+                ui_ok $group ${${current%\'*}##*\'}
+            done
+            ;;
+    esac
+
+    print
+    if (( ! missing )); then
+        print -r -- "${c[green]}${sym[ok]}${c[reset]} Everything is installed."
+        return 0
+    fi
+    if state_has_installed; then
+        print -r -- "${c[red]}${sym[fail]}${c[reset]} $missing missing. Run the script without options to repair it."
+    else
+        print -r -- "${c[red]}${sym[fail]}${c[reset]} $missing missing. Run the script without options to install it."
+    fi
+    return 1
 }
 
 # ----------------------------------------------------------------------------
@@ -1021,52 +1506,63 @@ preflight() {
 # Commands
 # ----------------------------------------------------------------------------
 
-cmd_install() {
+# use_manager: pick the package manager, the one the state names if there's
+# a state file, and say which it is.
+use_manager() {
+    local earlier=$(state_values manager)
+    if [[ -n $earlier ]]; then
+        if [[ -n $opts[manager] && $opts[manager] != $earlier ]]; then
+            die "yt-dlp was set up with $PM_TITLE[$earlier]; run with --uninstall first to switch to $PM_TITLE[$opts[manager]]"
+        fi
+        if (( ! $+commands[$PM_COMMAND[$earlier]] )); then
+            die "yt-dlp was set up with $PM_TITLE[$earlier], but $PM_TITLE[$earlier] isn't installed any more"
+        fi
+        opts[manager]=$earlier
+    fi
     pm_select
     pm_init
     print -r -- "Using $PM_TITLE[$opts[manager]] $pm_version"
-
-    state_load
-    local earlier=$(state_values manager) name
-    if [[ -n $earlier && $earlier != $opts[manager] ]]; then
-        die "yt-dlp was set up with $PM_TITLE[$earlier] before; run with --uninstall first to switch to $PM_TITLE[$opts[manager]]"
-    fi
-    state_add manager $opts[manager]
-    local -F start=$EPOCHREALTIME
-
-    ui_section Packages
-    case $opts[manager] in
-        homebrew)
-            for name in $HOMEBREW_PACKAGES; do
-                install_package $name
-            done
-            ui_section "Python packages"
-            install_pip_packages
-            ui_section yt-dlp
-            install_package yt-dlp
-            ;;
-        macports)
-            for name in $MACPORTS_PACKAGES; do
-                install_package $name
-            done
-            ui_section "Python packages"
-            for name in $MACPORTS_PY_PACKAGES; do
-                install_package $name
-            done
-            ui_section yt-dlp
-            # Without the ffmpeg variant, as the bash version did, since
-            # ffmpeg is installed above.
-            install_package yt-dlp -ffmpeg
-            ;;
-    esac
-    ui_section Settings
-    install_settings
-    install_summary $start
 }
 
-# Still being ported from archive/setup-yt-dlp.sh.
-cmd_uninstall() { die "uninstalling isn't implemented yet" }
-cmd_status()    { die "--status isn't implemented yet" }
+cmd_install() {
+    state_load
+    use_manager
+    # Run again after installing: ask what to do, unless --yes or the lack
+    # of a terminal makes it a repair.
+    if state_has_installed && (( ! opts[yes] )) && ui_can_ask; then
+        local version=$(pkg_version yt-dlp)
+        print
+        if [[ -n $version ]]; then
+            ui_choose "yt-dlp $version is set up already. What do you want to do?" \
+                "Repair: install anything that's missing" Uninstall Quit
+        else
+            ui_choose "setup-yt-dlp has run here before, but yt-dlp is missing. What do you want to do?" \
+                "Repair: install anything that's missing" Uninstall Quit
+        fi
+        case $REPLY in
+            2) uninstall_run; return ;;
+            3) return 0 ;;
+        esac
+    fi
+    install_run
+}
+
+cmd_uninstall() {
+    state_load
+    if ! state_has_installed; then
+        print -r -- "Nothing to uninstall: setup-yt-dlp hasn't installed anything for you."
+        state_delete
+        return 0
+    fi
+    use_manager
+    uninstall_run
+}
+
+cmd_status() {
+    state_load
+    use_manager
+    status_run
+}
 
 # ----------------------------------------------------------------------------
 # Exit and interrupts

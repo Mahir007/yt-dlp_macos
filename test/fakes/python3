@@ -1,11 +1,14 @@
 #!/bin/bash
 # A fake Homebrew Python, for pip and `-m site --user-base`. Installed
-# packages are files in $FAKE_STATE/pip holding their version. Every call is
+# packages are files in $FAKE_STATE/pip holding their version, and
+# $FAKE_STATE/pip-deps/NAME lists what NAME requires. Installing requests
+# also installs certifi and urllib3, as its dependencies. Every call is
 # logged to $FAKE_STATE/calls. Creating $FAKE_STATE/fail/NAME makes
-# installing NAME fail. Installing requests also installs two dependencies.
+# installing NAME fail.
 set -u
-state=$FAKE_STATE/pip
+state=$FAKE_STATE/pip deps=$FAKE_STATE/pip-deps
 echo "python3 $*" >>"$FAKE_STATE/calls"
+mkdir -p "$state" "$deps"
 
 if [[ ${1-} == -m && ${2-} == site && ${3-} == --user-base ]]; then
     echo "$HOME/Library/Python/3.15"
@@ -17,13 +20,27 @@ if [[ ${1-} != -m || ${2-} != pip ]]; then
 fi
 action=$3 name=${!#}
 
+# required_by NAME: the installed packages that require NAME, as pip show
+# lists them.
+required_by() {
+    local file needers=()
+    for file in "$state"/*; do
+        [[ -f $file ]] && grep -qx "$1" "$deps/${file##*/}" 2>/dev/null && needers+=("${file##*/}")
+    done
+    local IFS=,
+    local joined="${needers[*]}"
+    echo "${joined//,/, }"
+}
+
 case $action in
     show)
         if [[ ! -f $state/$name ]]; then
             echo "WARNING: Package(s) not found: $name" >&2
             exit 1
         fi
-        printf 'Name: %s\nVersion: %s\nLocation: %s\n' "$name" "$(cat "$state/$name")" "$HOME/Library/Python/3.15/lib/python/site-packages"
+        printf 'Name: %s\nVersion: %s\nLocation: %s\nRequires: %s\nRequired-by: %s\n' \
+            "$name" "$(cat "$state/$name")" "$HOME/Library/Python/3.15/lib/python/site-packages" \
+            "$(paste -sd, "$deps/$name" 2>/dev/null | sed 's/,/, /g')" "$(required_by "$name")"
         ;;
     list)
         # pip list --user --format=freeze
@@ -36,9 +53,11 @@ case $action in
             echo "ERROR: No matching distribution found for $name" >&2
             exit 1
         fi
-        mkdir -p "$state"
         added=$name
-        [[ $name == requests ]] && added="certifi urllib3 $name"
+        if [[ $name == requests ]]; then
+            added="certifi urllib3 $name"
+            printf '%s\n' certifi urllib3 >"$deps/$name"
+        fi
         for package in $added; do
             [[ -f $state/$package ]] || echo 1.0 >"$state/$package"
         done
@@ -46,7 +65,7 @@ case $action in
         ;;
     uninstall)
         [[ -f $state/$name ]] || { echo "WARNING: Skipping $name as it is not installed." >&2; exit 0; }
-        rm "$state/$name"
+        rm -f "$state/$name" "$deps/$name"
         echo "  Successfully uninstalled $name-1.0"
         ;;
     *)

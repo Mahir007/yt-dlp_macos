@@ -117,7 +117,7 @@ Choose 1-2 [1]: '
     run setup_script
     assert_line 'Using Homebrew 4.6.3'
 
-    rm -r "$BATS_TEST_TMPDIR/homebrew"
+    rm -r "$BATS_TEST_TMPDIR/homebrew" "$HOME/Library"
     use_fake macports
     run setup_script
     assert_line 'Using MacPorts 2.10.5'

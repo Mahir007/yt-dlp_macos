@@ -1,40 +1,117 @@
 #!/bin/bash
 # A fake Homebrew. Installed formulae are files in $FAKE_STATE/brew holding
-# their version. Every call is logged to $FAKE_STATE/calls. Creating
+# their version. $FAKE_STATE/brew-deps/NAME lists what NAME depends on, and
+# $FAKE_STATE/brew-requested/NAME marks a formula installed on request, not
+# as a dependency. Installing ffmpeg also installs libvpx and x265, as its
+# dependencies. Every call is logged to $FAKE_STATE/calls. Creating
 # $FAKE_STATE/fail/NAME makes installing or uninstalling NAME fail.
 set -u
-state=$FAKE_STATE/brew
+state=$FAKE_STATE/brew deps=$FAKE_STATE/brew-deps requested=$FAKE_STATE/brew-requested
 echo "brew $*" >>"$FAKE_STATE/calls"
+mkdir -p "$state" "$deps" "$requested"
 
-# The formula name is the last argument; python3 is an alias.
-name=${!#}
-[[ $name == python3 ]] && name=python@3.15
+resolve() {
+    if [[ $1 == python3 ]]; then echo python@3.15; else echo "$1"; fi
+}
+
+deps_of() {
+    case $1 in
+        ffmpeg) echo libvpx x265 ;;
+    esac
+}
+
+installed() {
+    [[ -f $state/$1 ]]
+}
+
+# dependents NAME: the installed formulae that depend on NAME.
+dependents() {
+    local file
+    for file in "$state"/*; do
+        [[ -f $file ]] && grep -qx "$1" "$deps/${file##*/}" 2>/dev/null && echo "${file##*/}"
+    done
+    return 0
+}
 
 case ${1-} in
     --version)
         echo "Homebrew 4.6.3"
         ;;
     list)
-        [[ -f $state/$name ]] || exit 1
+        # brew list --formula -1, or brew list --formula --versions NAME
+        if [[ ${!#} == -1 ]]; then
+            ls "$state"
+            exit 0
+        fi
+        name=$(resolve "${!#}")
+        installed "$name" || exit 1
         echo "$name $(cat "$state/$name")"
         ;;
     install)
+        name=$(resolve "${!#}")
         if [[ -e $FAKE_STATE/fail/$name ]]; then
             echo "Error: $name: no bottle available!" >&2
             exit 1
         fi
+        for dep in $(deps_of "$name"); do
+            installed "$dep" || echo 1.0 >"$state/$dep"
+        done
+        deps_of "$name" | tr ' ' '\n' >"$deps/$name"
         echo "==> Pouring $name--1.0.bottle.tar.gz"
-        mkdir -p "$state"
         echo 1.0 >"$state/$name"
+        touch "$requested/$name"
         ;;
     uninstall)
-        if [[ -e $FAKE_STATE/fail/$name ]]; then
-            echo "Error: Refusing to uninstall $name because it is required by something else" >&2
-            exit 1
+        # brew uninstall --formula NAME...: refuses all of them if anything
+        # else installed needs one.
+        shift
+        [[ ${1-} == --formula ]] && shift
+        names=()
+        for arg; do names+=("$(resolve "$arg")"); done
+        for name in "${names[@]}"; do
+            if [[ -e $FAKE_STATE/fail/$name ]]; then
+                echo "Error: Permission denied @ unlink_internal - $name" >&2
+                exit 1
+            fi
+            installed "$name" || { echo "Error: No such keg: $name" >&2; exit 1; }
+            for needer in $(dependents "$name"); do
+                if [[ " ${names[*]} " != *" $needer "* ]]; then
+                    echo "Error: Refusing to uninstall $name because it is required by $needer, which is currently installed." >&2
+                    exit 1
+                fi
+            done
+        done
+        for name in "${names[@]}"; do
+            rm -f "$state/$name" "$deps/$name" "$requested/$name"
+            echo "Uninstalling $name..."
+        done
+        ;;
+    autoremove)
+        # brew autoremove --dry-run: formulae installed as dependencies that
+        # nothing else installed needs, counting what would go with them.
+        removable=" "
+        changed=1
+        while ((changed)); do
+            changed=0
+            for file in "$state"/*; do
+                [[ -f $file ]] || continue
+                name=${file##*/}
+                [[ -e $requested/$name || $removable == *" $name "* ]] && continue
+                keep=0
+                for needer in $(dependents "$name"); do
+                    [[ $removable == *" $needer "* ]] || keep=1
+                done
+                if ((!keep)); then
+                    removable+="$name "
+                    changed=1
+                fi
+            done
+        done
+        read -ra names <<<"$removable"
+        if ((${#names[@]})); then
+            echo "==> Would autoremove ${#names[@]} unneeded formulae:"
+            printf '%s\n' "${names[@]}" | sort
         fi
-        [[ -f $state/$name ]] || { echo "Error: No such keg: $name" >&2; exit 1; }
-        rm "$state/$name"
-        echo "Uninstalling $name..."
         ;;
     *)
         echo "fake brew: unsupported: $*" >&2
