@@ -49,6 +49,33 @@ jobs:
       - name: Test
         run: make test
 
+  standalone:
+    name: zsh 5.7.1 on Linux, standalone script
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+
+      # macOS 10.15 ships zsh 5.7.1, the oldest version the standalone
+      # script supports. Debian 10 packaged the same release.
+      - name: Install zsh 5.7.1
+        working-directory: ${{ runner.temp }}
+        run: |
+          base=https://archive.debian.org/debian/pool/main/z/zsh
+          curl -fsSLO "$base/zsh-common_5.7.1-1+deb10u1_all.deb"
+          curl -fsSLO "$base/zsh_5.7.1-1+deb10u1_amd64.deb"
+          sha256sum -c - <<'EOF'
+          3f0a99094085e16e2f0d9c93f20f7cc93efb673518f51dcea37c392cff79ef02  zsh-common_5.7.1-1+deb10u1_all.deb
+          89cd7d28a5e86087c5a57f21af117e868c488d27e82dc1e905aa124aab242d61  zsh_5.7.1-1+deb10u1_amd64.deb
+          EOF
+          sudo dpkg -i zsh-common_5.7.1-1+deb10u1_all.deb zsh_5.7.1-1+deb10u1_amd64.deb
+          /bin/zsh --version
+
+      - name: Test
+        run: make test-standalone
+
   macos:
     name: zsh on macOS 15
     runs-on: macos-15
