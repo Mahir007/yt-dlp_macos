@@ -61,5 +61,10 @@ jobs:
       - name: Show zsh version
         run: /bin/zsh --version
 
+      # The tests that run YouTube Downloader Pro need bash 4 or later. The
+      # runner has only /bin/bash 3.2. This takes about 3 seconds.
+      - name: Install bash
+        run: brew install bash
+
       - name: Test
         run: make test
