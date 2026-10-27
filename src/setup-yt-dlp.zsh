@@ -115,6 +115,16 @@ ui_detail() {
     print -r -- "    ${c[dim]}$1${c[reset]}"
 }
 
+# ui_path PATH: print PATH with ~ for the home folder. Unlike ${(D)...},
+# this doesn't put a backslash before spaces.
+ui_path() {
+    local p=$1
+    if [[ $p == ${(b)HOME} || $p == ${(b)HOME}/* ]]; then
+        p="~${p#${(b)HOME}}"
+    fi
+    print -r -- $p
+}
+
 # ui_duration SECONDS: print "45s" or "2m 5s".
 ui_duration() {
     local -i s=$1
@@ -174,7 +184,7 @@ typeset -g log_file=''
 log_open() {
     [[ -n $log_file ]] && return 0
     local dir=$HOME/Library/Logs/yt-dlp-setup stamp
-    zf_mkdir -p $dir 2>/dev/null || die "couldn't create ${(D)dir}"
+    zf_mkdir -p $dir 2>/dev/null || die "couldn't create $(ui_path "$dir")"
     strftime -s stamp %Y%m%d-%H%M%S $EPOCHSECONDS
     log_file=$dir/$stamp.log
     local args=none
@@ -760,7 +770,7 @@ rc_change() {
 rc_edit() {
     local file=$1 old new done
     shift
-    local subject=${(D)file}
+    local subject=$(ui_path "$file")
     file_read "$file"
     old=$REPLY
     if ! rc_rewrite "$old" "$@"; then
@@ -891,7 +901,7 @@ state_save() {
 format=1
 ${(F)state}
 " }; then
-        die "couldn't save ${(D)file}"
+        die "couldn't save $(ui_path "$file")"
     fi
 }
 
@@ -926,7 +936,7 @@ finish() {
         for line in $problems; do
             print -r -- "    $line"
         done
-        [[ -n $log_file ]] && print -r -- "  The log has the details: ${(D)log_file}"
+        [[ -n $log_file ]] && print -r -- "  The log has the details: $(ui_path "$log_file")"
         print -r -- "  $retry"
         return 1
     else
@@ -1036,7 +1046,7 @@ install_settings() {
                 state_add zshrc $file
                 (( rc_created )) && state_add created $file
             else
-                problems+=("${(D)file} couldn't be set up")
+                problems+=("$(ui_path "$file") couldn't be set up")
             fi
             ;;
         macports)
@@ -1133,7 +1143,7 @@ downloader_offer() {
     ui_section "YouTube Downloader Pro"
     downloader_save "$file" || return 1
     print
-    print -r -- "Open ${(D)file} from Finder to start it."
+    print -r -- "Open $(ui_path "$file") from Finder to start it."
 }
 
 # downloader_choose: show Finder's save dialog, starting in ~/Downloads, and
@@ -1163,12 +1173,12 @@ downloader_save() {
     local file=$1 bash=$pm_prefix/bin/bash text
     local -i got=0
     if [[ ! -x $bash ]]; then
-        ui_fail "${(D)file}" "not saved: ${(D)bash} isn't installed"
+        ui_fail "$(ui_path "$file")" "not saved: $(ui_path "$bash") isn't installed"
         return 1
     fi
     # A #! line ends at the first space.
     if [[ $bash == *[[:space:]]* ]]; then
-        ui_fail "${(D)file}" "not saved: ${(D)bash} has a space in it"
+        ui_fail "$(ui_path "$file")" "not saved: $(ui_path "$bash") has a space in it"
         return 1
     fi
     downloader_tmp=${TMPDIR:-/tmp}/setup-yt-dlp-$$.command
@@ -1183,7 +1193,7 @@ downloader_save() {
     (( got )) || return 1
 
     if [[ $text != '#!@BASH@'$'\n'* ]]; then
-        ui_fail "${(D)file}" "not saved: the download isn't the template"
+        ui_fail "$(ui_path "$file")" "not saved: the download isn't the template"
         return 1
     fi
     text=${text//'@BASH@'/$bash}
@@ -1192,11 +1202,11 @@ downloader_save() {
     # The path is absolute, so it can't look like an option. (BSD chmod
     # takes no -- after the mode.)
     if ! { file_write "$file" "$text" && chmod 755 "$file" }; then
-        ui_fail "${(D)file}" "couldn't be written"
+        ui_fail "$(ui_path "$file")" "couldn't be written"
         return 1
     fi
-    log_note "${(D)file}: YouTube Downloader Pro saved"
-    ui_ok "${(D)file}" saved
+    log_note "$(ui_path "$file"): YouTube Downloader Pro saved"
+    ui_ok "$(ui_path "$file")" saved
 }
 
 # ----------------------------------------------------------------------------
@@ -1228,7 +1238,7 @@ uninstall_plan() {
         print -rf '  %-16s %s\n' Dependencies "$#deps that came with them, unless something else needs them"
     fi
     for file in $files; do
-        print -rf '  %-16s %s\n' Settings "the setup-yt-dlp lines in ${(D)file}"
+        print -rf '  %-16s %s\n' Settings "the setup-yt-dlp lines in $(ui_path "$file")"
     done
     (( $#selects )) && print -rf '  %-16s %s\n' Settings "MacPorts' ${(j:, :)${(@)selects%%=*}} choices go back to what they were"
     return 0
@@ -1243,10 +1253,10 @@ uninstall_created() {
     if [[ -n ${REPLY//[[:space:]]/} ]]; then
         state_remove created "$1"
     elif (( opts[dry_run] )); then
-        ui_skip "${(D)1}" "would be deleted, as setup-yt-dlp created it"
+        ui_skip "$(ui_path "$1")" "would be deleted, as setup-yt-dlp created it"
     elif zf_rm -f -- "$1"; then
-        log_note "${(D)1}: deleted"
-        ui_ok "${(D)1}" "deleted, as setup-yt-dlp created it"
+        log_note "$(ui_path "$1"): deleted"
+        ui_ok "$(ui_path "$1")" "deleted, as setup-yt-dlp created it"
         state_remove created "$1"
     fi
     return 0
@@ -1262,7 +1272,7 @@ uninstall_settings() {
             uninstall_created "$file"
             state_remove zshrc "$file"
         else
-            problems+=("the setup-yt-dlp lines in ${(D)file} couldn't be removed")
+            problems+=("the setup-yt-dlp lines in $(ui_path "$file") couldn't be removed")
         fi
     done
     # An entry is GROUP=EARLIER, such as python3=none.
@@ -1443,9 +1453,9 @@ status_run() {
             local file=$(rc_file)
             file_read $file
             if rc_rewrite "$REPLY" && (( rc_had_block )); then
-                ui_ok "${(D)file}" "has the setup-yt-dlp lines"
+                ui_ok "$(ui_path "$file")" "has the setup-yt-dlp lines"
             else
-                ui_fail "${(D)file}" "doesn't have the setup-yt-dlp lines"
+                ui_fail "$(ui_path "$file")" "doesn't have the setup-yt-dlp lines"
                 (( missing++ ))
             fi
             ;;
