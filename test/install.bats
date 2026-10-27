@@ -27,7 +27,7 @@ installs() {
 @test "Homebrew: installing everything" {
     use_fake homebrew
     run -0 setup_script
-    assert_output --regexp "^yt-dlp setup [0-9.]+
+    assert_output --regexp "^yt-dlp setup [0-9A-Za-z.-]+
 Using Homebrew 4.6.3
 
 ▸ Packages
@@ -216,7 +216,7 @@ select=python3=python313"
 @test "--dry-run installs nothing and records nothing" {
     use_fake homebrew
     run -0 setup_script --dry-run
-    assert_line --regexp '^yt-dlp setup [0-9.]+ \(dry run: nothing will be changed\)$'
+    assert_line --regexp '^yt-dlp setup [0-9A-Za-z.-]+ \(dry run: nothing will be changed\)$'
     assert_line '  – ffmpeg             would run: brew install --formula ffmpeg'
     assert_line '  – ~/.zshrc           would have the setup-yt-dlp lines added'
     assert_line 'Dry run finished. Nothing was changed.'

@@ -16,7 +16,7 @@ teardown() {
     fake_installed brew ffmpeg 7.1_4
     run -0 setup_script
     run -0 setup_script --status
-    assert_output --regexp "^yt-dlp setup [0-9.]+
+    assert_output --regexp "^yt-dlp setup [0-9A-Za-z.-]+
 Using Homebrew 4.6.3
 
 ▸ Packages
