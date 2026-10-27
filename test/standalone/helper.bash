@@ -25,11 +25,19 @@ standalone_setup() {
     # An Intel Mac on macOS 12 unless a test says otherwise. On Intel,
     # sysctl doesn't know hw.optional.arm64.
     stub sysctl 'exit 1'
+    # No Rosetta, which `arch -x86_64` needs on Apple silicon.
+    stub arch 'exit 1'
 }
 
 # apple_silicon: make the Mac an Apple silicon one.
 apple_silicon() {
     stub sysctl '[[ $* == "-n hw.optional.arm64" ]] && echo 1'
+}
+
+# rosetta: install Rosetta.
+rosetta() {
+    # shellcheck disable=SC2016  # expanded by the stub
+    stub arch '[[ $1 == -x86_64 ]] && shift && exec "$@"'
 }
 
 # macos VERSION: make the Mac run macOS VERSION.

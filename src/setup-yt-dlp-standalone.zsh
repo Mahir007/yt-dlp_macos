@@ -56,8 +56,8 @@ typeset -gra TOOLS=(yt-dlp_macos ffmpeg ffprobe)
 
 # yt-dlp_macos comes from yt-dlp's releases on GitHub. ffmpeg and ffprobe
 # come from martin-riedl.de, whose builds need macOS 12 or later, or on
-# older Intel Macs from evermeet.cx, whose builds need 10.13. Neither has a
-# build for Apple silicon on macOS 11.
+# older Macs from evermeet.cx, whose builds need 10.13. evermeet.cx builds
+# only for Intel, so on Apple silicon with macOS 11 they run with Rosetta.
 typeset -gr YTDLP_URL=https://github.com/yt-dlp/yt-dlp/releases
 typeset -gr RIEDL_URL=https://ffmpeg.martin-riedl.de
 typeset -gr EVERMEET_URL=https://evermeet.cx/ffmpeg
@@ -456,15 +456,22 @@ installed_version() {
 }
 
 # tool_source TOOL: print where TOOL comes from on this Mac: ytdlp, riedl or
-# evermeet, or nothing when there's no build that runs on it.
+# evermeet.
 tool_source() {
     if [[ $1 == yt-dlp_macos ]]; then
         print ytdlp
     elif is-at-least 12 $mac_version; then
         print riedl
-    elif [[ $mac_arch == amd64 ]]; then
+    else
         print evermeet
     fi
+}
+
+# needs_rosetta TOOL: succeed if TOOL's build is for Intel and this is an
+# Apple silicon Mac without Rosetta to run it.
+needs_rosetta() {
+    [[ $mac_arch == arm64 && $(tool_source $1) == evermeet ]] || return 1
+    ! arch -x86_64 /usr/bin/true 2>/dev/null
 }
 
 # The latest version of each tool, its download, and the download's
@@ -616,7 +623,7 @@ install_tool() {
 #   install      not installed
 #   update       installed, but not the latest
 #   foreign      not one the script installs, so left alone
-#   unsupported  no build runs on this Mac
+#   rosetta      the build is for Intel, and Rosetta isn't installed
 #   unknown      the latest version couldn't be found
 typeset -gA plan=() had=()
 
@@ -636,11 +643,11 @@ plan_tool() {
         plan[$tool]=current
         return 0
     fi
-    source=$(tool_source $tool)
-    if [[ -z $source ]]; then
-        plan[$tool]=unsupported
+    if needs_rosetta $tool; then
+        plan[$tool]=rosetta
         return 0
     fi
+    source=$(tool_source $tool)
     (( ui_live )) && spinner_start $tool "checking$sym[more]"
     lookup $source
     rc=$?
@@ -670,8 +677,8 @@ apply_tool() {
         foreign)
             ui_skip $tool "left alone: this script didn't install it"
             ;;
-        unsupported)
-            ui_skip $tool "skipped: on Apple silicon, it needs macOS 12 or later"
+        rosetta)
+            ui_skip $tool "skipped: its build for this macOS needs Rosetta"
             ;;
         unknown)
             ui_fail $tool "couldn't find the latest version"
@@ -730,6 +737,9 @@ install_run() {
     local -a done=("Start yt-dlp with yt-dlp_macos.")
     if [[ $opts[action] == install && ${(v)plan} == *current* ]]; then
         done+=("To update, run the script with --update.")
+    fi
+    if [[ ${(v)plan} == *rosetta* ]]; then
+        done+=("For ffmpeg and ffprobe, install Rosetta with 'softwareupdate --install-rosetta', then run the script again.")
     fi
     finish $start $retry $done || return 1
     [[ $opts[action] == install ]] && downloader_offer

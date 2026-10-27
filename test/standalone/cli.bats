@@ -121,5 +121,18 @@ ytdlp'
     apple_silicon
     macos 11.7.10
     run -0 in_script 'preflight; tool_source ffmpeg'
-    assert_output ''
+    assert_output evermeet
+}
+
+@test "Rosetta is needed only for evermeet.cx's builds on Apple silicon" {
+    macos 11.7.10
+    run -1 in_script 'preflight; needs_rosetta ffmpeg'
+    apple_silicon
+    run -0 in_script 'preflight; needs_rosetta ffmpeg'
+    run -1 in_script 'preflight; needs_rosetta yt-dlp_macos'
+    rosetta
+    run -1 in_script 'preflight; needs_rosetta ffmpeg'
+    macos 12.7.6
+    stub arch 'exit 1'
+    run -1 in_script 'preflight; needs_rosetta ffmpeg'
 }
