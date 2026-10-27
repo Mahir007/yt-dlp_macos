@@ -3,7 +3,8 @@
 # what `port installed` shows after the name, such as "@1.0_0 (active)".
 # Every call is logged to $FAKE_STATE/calls. Creating $FAKE_STATE/fail/NAME
 # makes installing or uninstalling NAME fail. `port select` choices are files
-# in $FAKE_STATE/select. Changes need the fake sudo.
+# in $FAKE_STATE/select. Changes need the fake sudo. Installing py-pip also
+# installs python314 and py314-pip, as the real one does.
 set -u
 state=$FAKE_STATE/port
 echo "port $*" >>"$FAKE_STATE/calls"
@@ -55,9 +56,13 @@ case ${1-} in
         case $action in
             install)
                 fail_if_asked "$name" install
-                echo "--->  Installing $name @1.0_0"
                 mkdir -p "$state"
-                echo "@1.0_0 (active)" >"$state/$name"
+                added=$name
+                [[ $name == py-pip ]] && added="python314 py314-pip $name"
+                for port in $added; do
+                    echo "--->  Installing $port @1.0_0"
+                    [[ -f $state/$port ]] || echo "@1.0_0 (active)" >"$state/$port"
+                done
                 ;;
             uninstall)
                 fail_if_asked "$name" uninstall

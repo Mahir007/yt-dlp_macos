@@ -68,22 +68,20 @@ ctrl_c_after() {
     assert_output --regexp '^  ✓ ffmpeg             installed \([0-9]+s\)$'
 }
 
-@test "a step that fails shows the end of its output and the log" {
+@test "a step that fails shows the end of its output" {
     run -3 in_script 'ui_init; run_step deno installing installed -- sh -c '\''for i in $(seq 1 14); do echo "line $i"; done; echo "Error: no bottle" >&2; exit 3'\'
     assert_line --index 0 '  ✗ deno               failed'
     refute_line '    line 5'
     assert_line --index 1 '    line 6'
     assert_line --index 10 '    Error: no bottle'
-    assert_line --index 11 --regexp '^    Log: ~/Library/Logs/yt-dlp-setup/[0-9]{8}-[0-9]{6}\.log$'
-    assert_equal "${#lines[@]}" 12
+    assert_equal "${#lines[@]}" 11
 }
 
 @test "a failed step's output keeps the last draw of progress lines" {
     run -1 in_script 'ui_init; run_step deno installing installed -- sh -c '\''printf "10%%\r50%%\r100%%\n\n   \nError\n"; exit 1'\'
-    assert_output --partial '  ✗ deno               failed
+    assert_output '  ✗ deno               failed
     100%
-    Error
-    Log: '
+    Error'
 }
 
 @test "--verbose shows the output under the step" {
@@ -94,12 +92,11 @@ ctrl_c_after() {
   ✓ ffmpeg             installed'
 }
 
-@test "--verbose shows only the log after a failure" {
+@test "--verbose doesn't repeat the output after a failure" {
     run -1 in_script 'opts[verbose]=1; ui_init; run_step deno installing installed -- sh -c "echo oops; exit 1"'
     assert_line --index 1 '    │ oops'
     assert_line --index 2 '  ✗ deno               failed'
-    assert_line --index 3 --partial '    Log: ~/Library/Logs/yt-dlp-setup/'
-    assert_equal "${#lines[@]}" 4
+    assert_equal "${#lines[@]}" 3
 }
 
 @test "--dry-run shows the command without running it" {
