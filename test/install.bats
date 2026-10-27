@@ -70,13 +70,15 @@ python3 -m pip install --user --break-system-packages yt-dlp-ejs
 brew install --formula yt-dlp"
 }
 
-@test "Homebrew: the state records what was installed, pip's dependencies too" {
+@test "Homebrew: the state records what was installed, with dependencies" {
     use_fake homebrew
     run -0 setup_script
     run -0 recorded
     assert_output "manager=homebrew
 package=bash
 package=ffmpeg
+dependency=libvpx
+dependency=x265
 package=atomicparsley
 package=python3
 package=deno
@@ -185,6 +187,8 @@ sudo -n port -N install yt-dlp -ffmpeg"
 package=ffmpeg
 package=AtomicParsley
 package=py-pip
+dependency=py314-pip
+dependency=python314
 package=deno
 package=py-websockets
 package=py-requests
@@ -222,13 +226,31 @@ select=python3=python313"
     assert [ ! -e "$HOME/Library/Logs" ]
 }
 
-@test "a setup with the other manager has to be uninstalled first" {
+@test "switching to the other manager needs an uninstall first" {
+    use_fake homebrew
+    use_fake macports
+    mkdir -p "${STATE%/*}"
+    printf 'format=1\nmanager=macports\n' >"$STATE"
+    run -1 --separate-stderr setup_script --manager homebrew
+    assert_stderr 'error: yt-dlp was set up with MacPorts; run with --uninstall first to switch to Homebrew'
+    run -1 installs
+}
+
+@test "the manager in the state is used without asking" {
+    use_fake homebrew
+    use_fake macports
+    mkdir -p "${STATE%/*}"
+    printf 'format=1\nmanager=macports\n' >"$STATE"
+    run -0 setup_script
+    assert_line 'Using MacPorts 2.10.5'
+}
+
+@test "the manager in the state has to be there still" {
     use_fake homebrew
     mkdir -p "${STATE%/*}"
     printf 'format=1\nmanager=macports\n' >"$STATE"
     run -1 --separate-stderr setup_script
-    assert_stderr 'error: yt-dlp was set up with MacPorts before; run with --uninstall first to switch to Homebrew'
-    run -1 installs
+    assert_stderr "error: yt-dlp was set up with MacPorts, but MacPorts isn't installed any more"
 }
 
 @test "the state file is read, not run" {

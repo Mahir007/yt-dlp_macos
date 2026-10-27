@@ -65,14 +65,22 @@ use_fake() {
     export PATH=$prefix/bin:$PATH
 }
 
-# fake_installed brew|port|pip NAME [VERSION]: mark NAME as installed.
+# fake_installed brew|port|pip NAME [VERSION]: mark NAME as installed, on
+# request as a user would have.
 fake_installed() {
-    mkdir -p "$FAKE_STATE/$1"
+    mkdir -p "$FAKE_STATE/$1" "$FAKE_STATE/$1-requested"
     if [[ $1 == port ]]; then
         echo "@${3:-1.0_0} (active)" >"$FAKE_STATE/$1/$2"
     else
         echo "${3:-1.0}" >"$FAKE_STATE/$1/$2"
     fi
+    touch "$FAKE_STATE/$1-requested/$2"
+}
+
+# fake_needs brew|port|pip NAME DEPENDENCY...: make NAME depend on DEPENDENCYs.
+fake_needs() {
+    mkdir -p "$FAKE_STATE/$1-deps"
+    printf '%s\n' "${@:3}" >"$FAKE_STATE/$1-deps/$2"
 }
 
 # calls: print the commands the fakes ran.

@@ -1,13 +1,36 @@
 #!/bin/bash
 # A fake MacPorts. Installed ports are files in $FAKE_STATE/port holding
 # what `port installed` shows after the name, such as "@1.0_0 (active)".
-# Every call is logged to $FAKE_STATE/calls. Creating $FAKE_STATE/fail/NAME
-# makes installing or uninstalling NAME fail. `port select` choices are files
-# in $FAKE_STATE/select. Changes need the fake sudo. Installing py-pip also
-# installs python314 and py314-pip, as the real one does.
+# $FAKE_STATE/port-deps/NAME lists what NAME depends on, and
+# $FAKE_STATE/port-requested/NAME marks a port installed on request.
+# Installing py-pip also installs py314-pip and python314, as the real one
+# does. `port select` choices are files in $FAKE_STATE/select. Every call is
+# logged to $FAKE_STATE/calls. Creating $FAKE_STATE/fail/NAME makes
+# installing or uninstalling NAME fail. Changes need the fake sudo.
 set -u
-state=$FAKE_STATE/port
+state=$FAKE_STATE/port deps=$FAKE_STATE/port-deps requested=$FAKE_STATE/port-requested
 echo "port $*" >>"$FAKE_STATE/calls"
+mkdir -p "$state" "$deps" "$requested"
+
+deps_of() {
+    case $1 in
+        py-pip) echo py314-pip ;;
+        py314-pip) echo python314 ;;
+    esac
+}
+
+installed() {
+    [[ -f $state/$1 ]]
+}
+
+# dependents NAME: the installed ports that depend on NAME.
+dependents() {
+    local file
+    for file in "$state"/*; do
+        [[ -f $file ]] && grep -qx "$1" "$deps/${file##*/}" 2>/dev/null && echo "${file##*/}"
+    done
+    return 0
+}
 
 need_root() {
     if [[ -z ${FAKE_AS_ROOT-} ]]; then
@@ -23,20 +46,45 @@ fail_if_asked() {
     fi
 }
 
+# add NAME: install NAME and, first, what it depends on.
+add() {
+    local dep
+    for dep in $(deps_of "$1"); do
+        installed "$dep" || add "$dep"
+    done
+    deps_of "$1" | tr ' ' '\n' >"$deps/$1"
+    echo "--->  Installing $1 @1.0_0"
+    echo "@1.0_0 (active)" >"$state/$1"
+}
+
 case ${1-} in
     version)
         echo "Version: 2.10.5"
         ;;
     -q)
-        # port -q installed [NAME]
-        if [[ -n ${3-} ]]; then
-            [[ -f $state/$3 ]] && echo "  $3 $(cat "$state/$3")"
-        else
-            for file in "$state"/*; do
-                [[ -f $file ]] && echo "  ${file##*/} $(cat "$file")"
-            done
-        fi
-        exit 0
+        case ${2-} in
+            installed)
+                # port -q installed [NAME]
+                if [[ -n ${3-} ]]; then
+                    installed "$3" && echo "  $3 $(cat "$state/$3")"
+                else
+                    for file in "$state"/*; do
+                        [[ -f $file ]] && echo "  ${file##*/} $(cat "$file")"
+                    done
+                fi
+                exit 0
+                ;;
+            echo)
+                # port -q echo leaves: ports installed as dependencies that
+                # nothing installed needs.
+                for file in "$state"/*; do
+                    [[ -f $file ]] || continue
+                    name=${file##*/}
+                    [[ -e $requested/$name || -n $(dependents "$name") ]] && continue
+                    echo "$name                         @1.0_0"
+                done
+                ;;
+        esac
         ;;
     select)
         # port select --show GROUP, port select --set GROUP TARGET
@@ -51,27 +99,36 @@ case ${1-} in
         fi
         ;;
     -N)
-        action=$2 name=$3
+        action=$2
+        shift 2
         need_root
         case $action in
             install)
+                name=$1
                 fail_if_asked "$name" install
-                mkdir -p "$state"
-                added=$name
-                [[ $name == py-pip ]] && added="python314 py314-pip $name"
-                for port in $added; do
-                    echo "--->  Installing $port @1.0_0"
-                    [[ -f $state/$port ]] || echo "@1.0_0 (active)" >"$state/$port"
-                done
+                add "$name"
+                touch "$requested/$name"
                 ;;
             uninstall)
-                fail_if_asked "$name" uninstall
-                [[ -f $state/$name ]] || { echo "Error: port $name not registered as installed." >&2; exit 1; }
-                rm "$state/$name"
-                echo "--->  Uninstalling $name @1.0_0"
+                # port -N uninstall NAME...
+                for name; do
+                    fail_if_asked "$name" uninstall
+                    installed "$name" || { echo "Error: port $name not registered as installed." >&2; exit 1; }
+                    for needer in $(dependents "$name"); do
+                        if [[ " $* " != *" $needer "* ]]; then
+                            echo "Error: Unable to uninstall $name @1.0_0, the following ports depend on it:" >&2
+                            echo "  $needer @1.0_0" >&2
+                            exit 1
+                        fi
+                    done
+                done
+                for name; do
+                    rm -f "$state/$name" "$deps/$name" "$requested/$name"
+                    echo "--->  Uninstalling $name @1.0_0"
+                done
                 ;;
             *)
-                echo "fake port: unsupported: $*" >&2
+                echo "fake port: unsupported: $action" >&2
                 exit 2
                 ;;
         esac
