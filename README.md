@@ -124,6 +124,16 @@ The summary at the end lists what failed. Installing and uninstalling write a lo
 
 The script works with one package manager at a time. To switch, uninstall, then run it with `--manager macports` (or `homebrew`).
 
+### macOS won't run the script
+
+A browser marks what it downloads as quarantined, and `tar` passes that on to the script it extracts. If macOS refuses to run the script, remove the mark, then run it again:
+
+```sh
+xattr -d com.apple.quarantine setup-yt-dlp.zsh
+```
+
+For the standalone script, use `setup-yt-dlp-standalone.zsh`.
+
 ### yt-dlp isn't found after installing
 
 Open a new terminal window. `--status` shows whether anything is missing.
