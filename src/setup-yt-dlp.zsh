@@ -1189,7 +1189,9 @@ downloader_save() {
     text=${text//'@BASH@'/$bash}
     text=${text//'@PREFIX@'/${(q-)pm_prefix}}
     text=${text//'@MANAGER@'/$opts[manager]}
-    if ! { file_write "$file" "$text" && chmod 755 -- "$file" }; then
+    # The path is absolute, so it can't look like an option. (BSD chmod
+    # takes no -- after the mode.)
+    if ! { file_write "$file" "$text" && chmod 755 "$file" }; then
         ui_fail "${(D)file}" "couldn't be written"
         return 1
     fi
