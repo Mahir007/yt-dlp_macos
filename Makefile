@@ -15,7 +15,7 @@ test-standalone: $(BATS)
 lint:
 	$(ZSH) -n src/setup-yt-dlp.zsh
 	$(ZSH) -n src/setup-yt-dlp-standalone.zsh
-	shellcheck src/youtube-downloader-pro.command test/test_helper/common.bash test/*.bats \
+	shellcheck src/youtube-downloader-pro.command src/youtube-downloader-pro-standalone.command test/test_helper/common.bash test/*.bats \
 		test/standalone/*.bats test/standalone/helper.bash test/fakes/* .github/scripts/*.sh
 
 $(BATS):

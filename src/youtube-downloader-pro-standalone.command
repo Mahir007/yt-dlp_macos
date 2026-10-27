@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# YouTube Downloader Pro for macOS
-# Compatible with the legacy built-in Bash-3.2.
+# YouTube Downloader Pro for macOS, for the yt-dlp_macos that
+# setup-yt-dlp-standalone.zsh installs. Runs on macOS's own bash 3.2.
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -41,8 +41,8 @@ FORMAT_OPTS=(
 
 check_dependencies() {
     if ! command -v yt-dlp_macos &> /dev/null; then
-        error "Error: yt-dlp is not installed or not on your PATH."
-        echo -e "Download from ${YELLOW}https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos${NC}"
+        error "Error: yt-dlp_macos is not installed or not on your PATH."
+        echo -e "Install it with setup-yt-dlp-standalone.zsh from ${YELLOW}https://github.com/Mahir007/yt-dlp_macos/releases${NC}"
         exit 1
     fi
 }
