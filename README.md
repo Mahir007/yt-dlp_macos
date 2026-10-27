@@ -89,7 +89,7 @@ yt-dlp is then the `yt-dlp_macos` command.
 | | From |
 | - | - |
 | yt-dlp_macos | [yt-dlp's releases](https://github.com/yt-dlp/yt-dlp/releases/latest) |
-| ffmpeg, ffprobe | [martin-riedl.de](https://ffmpeg.martin-riedl.de) on macOS 12 or later. On an Intel Mac with macOS 10.15 or 11, [evermeet.cx](https://evermeet.cx/ffmpeg/). There's no build for Apple silicon on macOS 11, so there it installs yt-dlp_macos alone. |
+| ffmpeg, ffprobe | [martin-riedl.de](https://ffmpeg.martin-riedl.de) on macOS 12 or later. On macOS 10.15 or 11, [evermeet.cx](https://evermeet.cx/ffmpeg/). Its builds are for Intel, so on Apple silicon they need Rosetta. Without it, the script installs yt-dlp_macos alone and says how to install Rosetta. |
 
 Downloads are checked against the SHA-256 their site publishes. evermeet.cx doesn't publish one. Each new binary is run once before it replaces the old one.
 

@@ -62,14 +62,27 @@ teardown() {
     refute_line --partial martin-riedl
 }
 
-@test "Apple silicon on macOS 11 gets yt-dlp_macos alone" {
+@test "Apple silicon on macOS 11 gets evermeet.cx's Intel builds, with Rosetta" {
+    apple_silicon
+    macos 11.7.10
+    rosetta
+    run -0 setup_script
+    assert_line '  ✓ ffmpeg         installed 9.0.1'
+    run -0 installed_as ffprobe
+    assert_output --regexp '^ffprobe version 9\.0\.1-tessus '
+}
+
+@test "without Rosetta, Apple silicon on macOS 11 gets yt-dlp_macos alone" {
     apple_silicon
     macos 11.7.10
     run -0 setup_script
     assert_line '  ✓ yt-dlp_macos   installed 2026.10.26'
-    assert_line '  – ffmpeg         skipped: on Apple silicon, it needs macOS 12 or later'
-    assert_line '  – ffprobe        skipped: on Apple silicon, it needs macOS 12 or later'
+    assert_line '  – ffmpeg         skipped: its build for this macOS needs Rosetta'
+    assert_line '  – ffprobe        skipped: its build for this macOS needs Rosetta'
+    assert_line "  For ffmpeg and ffprobe, install Rosetta with 'softwareupdate --install-rosetta', then run the script again."
     assert [ ! -e "$BIN/ffmpeg" ]
+    run -0 calls
+    refute_line --partial evermeet
 }
 
 @test "run again, it doesn't download anything and points at --update" {
