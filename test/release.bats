@@ -30,14 +30,13 @@ commit() {
     git commit -q -m "$1"
 }
 
-@test "the archive holds the script and the license" {
+@test "the archive holds the script and the license, with no folder" {
     needs_gnu_tar
     run -0 package v1.2.3-beta.4
     run -0 tar -tvJf "$BATS_TEST_TMPDIR/dist/setup-yt-dlp.tar.xz"
-    assert_line --regexp "^drwxr-xr-x 0/0 .* setup-yt-dlp-1\.2\.3-beta\.4/$"
-    assert_line --regexp "^-rw-r--r-- 0/0 .* setup-yt-dlp-1\.2\.3-beta\.4/LICENSE$"
-    assert_line --regexp "^-rwxr-xr-x 0/0 .* setup-yt-dlp-1\.2\.3-beta\.4/setup-yt-dlp\.zsh$"
-    assert_equal "${#lines[@]}" 3
+    assert_line --regexp "^-rw-r--r-- 0/0 .* LICENSE$"
+    assert_line --regexp "^-rwxr-xr-x 0/0 .* setup-yt-dlp\.zsh$"
+    assert_equal "${#lines[@]}" 2
     cd "$BATS_TEST_TMPDIR/dist"
     run -0 sha256sum -c setup-yt-dlp.tar.xz.sha256
 }
@@ -46,10 +45,10 @@ commit() {
     needs_gnu_tar
     run -0 package v1.2.3-beta.4
     tar -xJf "$BATS_TEST_TMPDIR/dist/setup-yt-dlp.tar.xz" -C "$BATS_TEST_TMPDIR"
-    run -0 "$ZSH_BIN" "$BATS_TEST_TMPDIR/setup-yt-dlp-1.2.3-beta.4/setup-yt-dlp.zsh" --version
+    run -0 "$ZSH_BIN" "$BATS_TEST_TMPDIR/setup-yt-dlp.zsh" --version
     assert_output 'setup-yt-dlp 1.2.3-beta.4'
     # The version is all that differs from the script in the repository.
-    run -1 diff "$ROOT/src/setup-yt-dlp.zsh" "$BATS_TEST_TMPDIR/setup-yt-dlp-1.2.3-beta.4/setup-yt-dlp.zsh"
+    run -1 diff "$ROOT/src/setup-yt-dlp.zsh" "$BATS_TEST_TMPDIR/setup-yt-dlp.zsh"
     assert_output --regexp '^[0-9]+c[0-9]+
 < typeset -gr SETUP_VERSION=0.0.0-dev
 ---
@@ -91,7 +90,7 @@ commit() {
     assert_line --index 0 '> [!WARNING]'
     assert_line --index 1 '> This is a pre-release, for trying things out before 0.2.0 is final.'
     assert_line 'curl -fsSLO https://github.com/me/repo/releases/download/v0.2.0-beta.1/setup-yt-dlp.tar.xz'
-    assert_line './setup-yt-dlp-0.2.0-beta.1/setup-yt-dlp.zsh'
+    assert_line './setup-yt-dlp.zsh'
     assert_output --regexp '### ✨ New
 
 - Add a second thing \([0-9a-f]+\)
