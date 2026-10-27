@@ -1,0 +1,35 @@
+#!/bin/bash
+# A fake curl that serves files from $FAKE_WEB, where a URL's file is at its
+# path without https://. Requested URLs are logged to $FAKE_STATE/calls.
+# FILE.redirect, holding a URL, makes FILE's URL redirect there, which
+# `-w '%{redirect_url}'` prints, as for a 302 without -L.
+set -u
+out='' format='' url=''
+while (($#)); do
+    case $1 in
+        -o) out=$2 && shift ;;
+        -w) format=$2 && shift ;;
+        --retry) shift ;;
+        -*) ;;
+        *) url=$1 ;;
+    esac
+    shift
+done
+echo "curl $url" >>"$FAKE_STATE/calls"
+file=$FAKE_WEB/${url#https://}
+
+if [[ -f $file.redirect ]]; then
+    if [[ $format == '%{redirect_url}' ]]; then
+        cat "$file.redirect"
+    fi
+    exit 0
+fi
+if [[ ! -f $file ]]; then
+    echo "curl: (22) The requested URL returned error: 404" >&2
+    exit 22
+fi
+if [[ -z $out ]]; then
+    cat "$file"
+elif [[ $out != /dev/null ]]; then
+    cp "$file" "$out"
+fi
