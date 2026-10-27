@@ -163,7 +163,8 @@ created=$HOME/.zshrc"
     assert_line '  ✓ python3            now python314'
     assert_line '  ✓ pip3               now pip314'
     run -0 installs
-    assert_output "sudo -n port -N install ffmpeg
+    assert_output "sudo -n port -N install bash
+sudo -n port -N install ffmpeg
 sudo -n port -N install AtomicParsley
 sudo -n port -N install py-pip
 sudo -n port -N install deno
@@ -184,6 +185,7 @@ sudo -n port -N install yt-dlp -ffmpeg"
     run -0 setup_script
     run -0 recorded
     assert_output "manager=macports
+package=bash
 package=ffmpeg
 package=AtomicParsley
 package=py-pip

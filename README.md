@@ -19,7 +19,7 @@ When it's done, open a new terminal window to use yt-dlp.
 
 |                 | Homebrew | MacPorts |
 | --------------- | -------- | -------- |
-| Packages        | bash, ffmpeg, atomicparsley, python3, deno | ffmpeg, AtomicParsley, py-pip, deno |
+| Packages        | bash, ffmpeg, atomicparsley, python3, deno | bash, ffmpeg, AtomicParsley, py-pip, deno |
 | Python packages | websockets, requests, mutagen, pycryptodomex, curl-cffi, yt-dlp-ejs, with pip into your user site-packages | The same, as ports: py-websockets, py-requests, py-mutagen, py-pycryptodomex, py-curl-cffi, yt-dlp-ejs |
 | yt-dlp          | yt-dlp | yt-dlp, without its ffmpeg variant |
 | Settings        | A marked block in `~/.zshrc` that sets `HOMEBREW_NO_ENV_HINTS=1` and puts pip's user folder on `PATH` | `python`, `python3`, `pip` and `pip3` point at MacPorts' newest Python |
@@ -48,13 +48,21 @@ Run again after an install, the script asks whether to repair (install anything 
 
 With MacPorts, the script asks for your password once, when it first needs it.
 
+## YouTube Downloader Pro
+
+YouTube Downloader Pro is a menu for downloading audio (MP3 or FLAC), video (MP4 or MKV) or a thumbnail with yt-dlp. At the end of an install, the script asks whether to download it. If you say yes, a save dialog opens in Downloads. Double-click the saved file to start it.
+
+The script fills it in for the package manager it used. Each time it starts, it updates yt-dlp; with MacPorts, that asks for your password.
+
+To get it again, run the script again and choose Repair.
+
 ## Uninstalling
 
 ```sh
 ./setup-yt-dlp.zsh --uninstall
 ```
 
-The script lists what it will remove and asks before it starts. It removes only what it installed: packages you had before stay, and so do dependencies and Python packages that something else needs. It takes its block out of `~/.zshrc`, and deletes the file if it created it and nothing else has been added. With MacPorts, `port select` goes back to what it was.
+The script lists what it will remove and asks before it starts. It removes only what it installed: packages you had before stay, and so do dependencies and Python packages that something else needs. It takes its block out of `~/.zshrc`, and deletes the file if it created it and nothing else has been added. With MacPorts, `port select` goes back to what it was. A saved YouTube Downloader Pro stays; delete it yourself.
 
 What the script installed is recorded in `~/Library/Application Support/yt-dlp-setup/state`. If that file is deleted, `--uninstall` has nothing to remove.
 

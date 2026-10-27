@@ -943,10 +943,10 @@ finish() {
 # Installing
 # ----------------------------------------------------------------------------
 
-# What gets installed, in this order. bash is there for
-# youtube-downloader-pro.command, which runs with Homebrew's bash.
+# What gets installed, in this order. bash is there for YouTube Downloader
+# Pro, which needs bash 4 or later.
 typeset -gra HOMEBREW_PACKAGES=(bash ffmpeg atomicparsley python3 deno)
-typeset -gra MACPORTS_PACKAGES=(ffmpeg AtomicParsley py-pip deno)
+typeset -gra MACPORTS_PACKAGES=(bash ffmpeg AtomicParsley py-pip deno)
 # yt-dlp's optional Python packages: from pip with Homebrew, as ports with
 # MacPorts.
 typeset -gra PIP_PACKAGES=(websockets requests mutagen pycryptodomex curl-cffi yt-dlp-ejs)
@@ -1091,7 +1091,110 @@ install_run() {
 
     version=$(pkg_version yt-dlp)
     finish $start "Run the script again to retry." \
-        "yt-dlp${version:+ $version} is installed." "Open a new terminal window to start using it."
+        "yt-dlp${version:+ $version} is installed." "Open a new terminal window to start using it." ||
+        return 1
+    downloader_offer
+}
+
+# ----------------------------------------------------------------------------
+# YouTube Downloader Pro
+# ----------------------------------------------------------------------------
+
+# bin/youtube-downloader-pro.command in the repository is a template. Its
+# @BASH@, @PREFIX@ and @MANAGER@ are filled in for the manager used.
+typeset -gr DOWNLOADER_REPO=Mahir007/yt-dlp_macos
+typeset -gr DOWNLOADER_PATH=bin/youtube-downloader-pro.command
+typeset -gr DOWNLOADER_NAME='YouTube Downloader Pro.command'
+
+# The download, until downloader_save has read it.
+typeset -g downloader_tmp=''
+
+# downloader_url: print where to download the template from: the release's
+# tag, or main for a script that isn't from a release.
+downloader_url() {
+    local ref=v$SETUP_VERSION
+    [[ $SETUP_VERSION == *-dev ]] && ref=main
+    print -r -- "https://raw.githubusercontent.com/$DOWNLOADER_REPO/$ref/$DOWNLOADER_PATH"
+}
+
+# downloader_offer: ask whether to save YouTube Downloader Pro, and where.
+# Only asks when there's someone to answer and a Mac screen to show Finder's
+# dialog on.
+downloader_offer() {
+    (( opts[dry_run] || opts[yes] )) && return 0
+    { ui_can_ask && (( $+commands[osascript] )) } || return 0
+    local file
+    print
+    ui_confirm "Do you want to download the YouTube Downloader Pro script?" || return 0
+    if ! file=$(downloader_choose); then
+        print -r -- "Not saved."
+        return 0
+    fi
+    ui_section "YouTube Downloader Pro"
+    downloader_save "$file" || return 1
+    print
+    print -r -- "Open ${(D)file} from Finder to start it."
+}
+
+# downloader_choose: show Finder's save dialog, starting in ~/Downloads, and
+# print the file chosen. Fails if it's cancelled.
+downloader_choose() {
+    local dir=$HOME/Downloads file
+    [[ -d $dir ]] || dir=$HOME
+    # `activate` brings the dialog in front of the terminal.
+    file=$(osascript - "$dir" "$DOWNLOADER_NAME" 2>/dev/null <<'EOF'
+on run argv
+    activate
+    set dir to (POSIX file (item 1 of argv)) as alias
+    set chosen to choose file name with prompt "Save YouTube Downloader Pro as:" default name (item 2 of argv) default location dir
+    return POSIX path of chosen
+end run
+EOF
+) || return 1
+    [[ -n $file ]] || return 1
+    # Finder opens a .command file in Terminal.
+    [[ $file == *.command ]] || file+=.command
+    print -r -- $file
+}
+
+# downloader_save FILE: download the template, fill it in for the chosen
+# manager, and save it as FILE, as steps.
+downloader_save() {
+    local file=$1 bash=$pm_prefix/bin/bash text
+    local -i got=0
+    if [[ ! -x $bash ]]; then
+        ui_fail "${(D)file}" "not saved: ${(D)bash} isn't installed"
+        return 1
+    fi
+    # A #! line ends at the first space.
+    if [[ $bash == *[[:space:]]* ]]; then
+        ui_fail "${(D)file}" "not saved: ${(D)bash} has a space in it"
+        return 1
+    fi
+    downloader_tmp=${TMPDIR:-/tmp}/setup-yt-dlp-$$.command
+    if run_step download downloading downloaded -- \
+            curl -fsSL --retry 2 -o $downloader_tmp "$(downloader_url)"; then
+        file_read $downloader_tmp
+        text=$REPLY
+        got=1
+    fi
+    zf_rm -f -- $downloader_tmp
+    downloader_tmp=''
+    (( got )) || return 1
+
+    if [[ $text != '#!@BASH@'$'\n'* ]]; then
+        ui_fail "${(D)file}" "not saved: the download isn't the template"
+        return 1
+    fi
+    text=${text//'@BASH@'/$bash}
+    text=${text//'@PREFIX@'/${(q-)pm_prefix}}
+    text=${text//'@MANAGER@'/$opts[manager]}
+    if ! { file_write "$file" "$text" && chmod 755 -- "$file" }; then
+        ui_fail "${(D)file}" "couldn't be written"
+        return 1
+    fi
+    log_note "${(D)file}: YouTube Downloader Pro saved"
+    ui_ok "${(D)file}" saved
 }
 
 # ----------------------------------------------------------------------------
@@ -1577,6 +1680,7 @@ TRAPEXIT() {
     sudo_end
     [[ -n $log_file ]] && zf_rm -f ${log_file%.log}.out
     [[ -n $file_tmp ]] && zf_rm -f -- $file_tmp
+    [[ -n $downloader_tmp ]] && zf_rm -f -- $downloader_tmp
 }
 
 TRAPINT() {
