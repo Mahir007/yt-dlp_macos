@@ -1215,11 +1215,11 @@ downloader_save() {
     ui_ok "$(ui_path "$file")" saved
 }
 
-# downloader_target: print where --downloader saves: --output, or
-# ~/Downloads. A folder gets the file's usual name in it.
+# downloader_target: print where --downloader saves: the path given with
+# it, or ~/Downloads. A folder gets the file's usual name in it.
 downloader_target() {
     local file=${opts[output]:-$HOME/Downloads}
-    # A ~ after --output= isn't expanded by the shell.
+    # A ~ after --downloader= isn't expanded by the shell.
     [[ $file == '~' || $file == '~/'* ]] && file=$HOME${file#\~}
     file=${file:a}
     if [[ -d $file ]]; then
@@ -1515,9 +1515,9 @@ ${c[bold]}Options:${c[reset]}
   -m, --manager <name>  Package manager to use: homebrew or macports
   -u, --uninstall       Remove what this script installed and undo its changes
   -s, --status          Show what is installed, then exit
-  -d, --downloader      Only save YouTube Downloader Pro, installing nothing
-  -o, --output <path>   Where --downloader saves it: a file or a folder
-                        (default: ~/Downloads)
+  -d, --downloader [<path>]
+                        Only save YouTube Downloader Pro, to the file or
+                        folder <path> or to ~/Downloads. Installs nothing.
   -n, --dry-run         Show what would be done without changing anything
   -y, --yes             Don't ask questions
   -v, --verbose         Show the output of brew, port and pip
@@ -1543,7 +1543,6 @@ typeset -gra CLI_SPEC=(
     'u'    '-uninstall=u'
     's'    '-status=s'
     'd'    '-downloader=d'
-    'o:=o' '-output:=o'
     'n'    '-dry-run=n'
     'y'    '-yes=y'
     'v'    '-verbose=v'
@@ -1585,9 +1584,46 @@ cli_explain() {
     cli_fail "unknown option '$word'"
 }
 
+# cli_downloader_path ARGS...: take the path out of --downloader PATH,
+# --downloader=PATH or -d PATH into opts[output], and set reply to the other
+# ARGS. zparseopts can't do this itself: it only takes an optional value
+# from the same word. The word after --downloader is its path unless it
+# starts with -, as the script has no other arguments.
+cli_downloader_path() {
+    typeset -ga reply=()
+    local word
+    while (( $# )); do
+        word=$1
+        shift
+        case $word in
+            --)
+                reply+=(-- "$@")
+                break
+                ;;
+            --downloader=*)
+                opts[output]=${word#*=}
+                [[ -n $opts[output] ]] || cli_fail "option '--downloader=' needs a path after the ="
+                reply+=(--downloader)
+                ;;
+            -d | --downloader)
+                reply+=($word)
+                if (( $# )) && [[ $1 != -* ]]; then
+                    opts[output]=$1
+                    shift
+                fi
+                ;;
+            *)
+                reply+=("$word")
+                ;;
+        esac
+    done
+}
+
 # cli_parse ARGS...: fill in opts, or exit on a usage error.
 cli_parse() {
     local -A parsed
+    cli_downloader_path "$@"
+    set -- "${reply[@]}"
     if ! zparseopts -D -F -M -A parsed -- $CLI_SPEC 2>/dev/null; then
         cli_explain "$@"
     fi
@@ -1616,12 +1652,6 @@ cli_parse() {
         opts[action]=status
     elif (( ${+parsed[-d]} )); then
         opts[action]=downloader
-    fi
-    if (( ${+parsed[-o]} )); then
-        (( ${+parsed[-d]} )) || cli_fail "--output only goes with --downloader"
-        # --output=PATH arrives as "=PATH".
-        opts[output]=${parsed[-o]#=}
-        [[ -n $opts[output] ]] || cli_fail "option '--output' needs a value"
     fi
     (( ${+parsed[-n]} )) && opts[dry_run]=1
     (( ${+parsed[-y]} )) && opts[yes]=1

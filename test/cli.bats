@@ -118,13 +118,18 @@ Run 'setup-yt-dlp.zsh --help' to see the options."
     assert_stderr_line --index 0 "error: --status and --downloader can't be used together"
 }
 
-@test "--output needs --downloader and a value" {
-    run -2 --separate-stderr setup_script --output "$HOME"
-    assert_stderr_line --index 0 "error: --output only goes with --downloader"
-    run -2 --separate-stderr setup_script --downloader --output
-    assert_stderr_line --index 0 "error: option '--output' needs a value"
-    run -2 --separate-stderr setup_script --downloader --output=
-    assert_stderr_line --index 0 "error: option '--output' needs a value"
+@test "--downloader takes its path from the next word, unless that's an option" {
+    run -0 in_script 'cli_parse --downloader ~/Apps --yes && print -r -- $opts[action] $opts[output] $opts[yes]'
+    assert_output "downloader $HOME/Apps 1"
+    run -0 in_script 'cli_parse -d --yes && print -r -- $opts[action] "<$opts[output]>" $opts[yes]'
+    assert_output 'downloader <> 1'
+    run -0 in_script 'cli_parse --downloader=/tmp/x && print -r -- $opts[output]'
+    assert_output /tmp/x
+    run -2 --separate-stderr setup_script --downloader=
+    assert_stderr_line --index 0 "error: option '--downloader=' needs a path after the ="
+    # Without --downloader, a path is still an unexpected argument.
+    run -2 --separate-stderr setup_script --yes /tmp/x
+    assert_stderr_line --index 0 "error: unexpected argument '/tmp/x'"
 }
 
 @test "defaults without options" {
