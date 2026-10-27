@@ -115,17 +115,40 @@ MANAGER=macports"
     assert_line 'python3 -m pip install --user --break-system-packages -Uq yt-dlp-ejs'
 }
 
-@test "the saved script updates yt-dlp with MacPorts" {
-    ((BASH_VERSINFO[0] >= 4)) || skip "needs bash 4 or later to run the saved script"
+# run_macports VERSION: save the downloader for MacPorts, with yt-dlp
+# 1.0 and yt-dlp-ejs 1.0 installed, and run it while ports.macports.org
+# says yt-dlp's version is VERSION. Quits at the menu.
+run_macports() {
     use_manager macports
+    fake_installed port yt-dlp
+    fake_installed port yt-dlp-ejs
     # In the prefix, where the saved script's PATH finds it.
     printf '#!/bin/sh\n' >"$PREFIX/bin/yt-dlp"
     chmod +x "$PREFIX/bin/yt-dlp"
     run -0 save macports
+    stub curl 'case $* in
+    */yt-dlp/*) echo "{\"name\":\"yt-dlp\",\"version\":\"'"$1"'\",\"epoch\":0}" ;;
+    *) echo "{\"name\":\"yt-dlp-ejs\",\"version\":\"1.0\",\"epoch\":0}" ;;
+esac'
+    : >"$FAKE_STATE/calls"
     run -0 env PATH="$STUBS:/usr/bin:/bin" "$SAVED" <<<q
     assert_output --partial 'Goodbye!'
-    run -0 calls
-    assert_line 'sudo port -q selfupdate'
+}
+
+@test "with MacPorts up to date, the saved script needs no password" {
+    ((BASH_VERSINFO[0] >= 4)) || skip "needs bash 4 or later to run the saved script"
+    run_macports 1.0
+    assert_output --partial 'yt-dlp is up to date.'
+    run -1 grep '^sudo' "$FAKE_STATE/calls"
+}
+
+@test "with a MacPorts update, the saved script updates only what changed" {
+    ((BASH_VERSINFO[0] >= 4)) || skip "needs bash 4 or later to run the saved script"
+    run_macports 2.0
+    assert_output --partial "There's an update for yt-dlp. MacPorts needs your password to install it."
+    run -0 grep '^sudo' "$FAKE_STATE/calls"
+    assert_output 'sudo port -q selfupdate
+sudo port -qN upgrade yt-dlp'
 }
 
 @test "a failed download saves nothing" {

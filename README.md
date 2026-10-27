@@ -52,7 +52,7 @@ With MacPorts, the script asks for your password once, when it first needs it.
 
 YouTube Downloader Pro is a menu for downloading audio (MP3 or FLAC), video (MP4 or MKV) or a thumbnail with yt-dlp. At the end of an install, the script asks whether to download it. If you say yes, a save dialog opens in Downloads. Double-click the saved file to start it.
 
-The script fills it in for the package manager it used. Each time it starts, it updates yt-dlp; with MacPorts, that asks for your password.
+The script fills it in for the package manager it used. Each time it starts, it updates yt-dlp. With MacPorts, it asks for your password only when there's an update.
 
 To get it again, run the script again and choose Repair.
 
@@ -62,7 +62,7 @@ To get it again, run the script again and choose Repair.
 ./setup-yt-dlp.zsh --uninstall
 ```
 
-The script lists what it will remove and asks before it starts. It removes only what it installed: packages you had before stay, and so do dependencies and Python packages that something else needs. It takes its block out of `~/.zshrc`, and deletes the file if it created it and nothing else has been added. With MacPorts, `port select` goes back to what it was. A saved YouTube Downloader Pro stays; delete it yourself.
+The script lists what it will remove and asks before it starts. It removes only what it installed: packages you had before stay, and so do dependencies and Python packages that something else needs. It takes its block out of `~/.zshrc`, and deletes the file if it created it and nothing else has been added. With MacPorts, `port select` goes back to what it was. A saved YouTube Downloader Pro is left alone.
 
 What the script installed is recorded in `~/Library/Application Support/yt-dlp-setup/state`. If that file is deleted, `--uninstall` has nothing to remove.
 

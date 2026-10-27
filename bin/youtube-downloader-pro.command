@@ -53,6 +53,26 @@ check_dependencies() {
     fi
 }
 
+# Print the ports, of yt-dlp and yt-dlp-ejs, whose version on
+# ports.macports.org differs from the one installed. Unlike `port
+# selfupdate`, this needs no password.
+macports_outdated() {
+    local name installed latest
+    for name in yt-dlp yt-dlp-ejs; do
+        # "  yt-dlp @2026.10.22_0 (active)"
+        installed=$(port -q installed "$name" 2>/dev/null | awk '/\(active\)/ { print $2; exit }')
+        installed=${installed#@}
+        installed=${installed%%[_+]*}
+        [[ -n $installed ]] || continue
+        # {"name":"yt-dlp","portdir":"net/youtube-dl","version":"2026.10.26",...
+        latest=$(curl -fsSL --max-time 10 "https://ports.macports.org/api/v1/ports/$name/" 2>/dev/null |
+            grep -o '"version": *"[^"]*"' | head -1 | cut -d'"' -f4)
+        if [[ -n $latest && $latest != "$installed" ]]; then
+            echo "$name"
+        fi
+    done
+}
+
 update_ytdlp() {
     print_header "Checking for Updates"
     case $MANAGER in
@@ -61,9 +81,15 @@ update_ytdlp() {
             python3 -m pip install --user --break-system-packages -Uq yt-dlp-ejs || true
             ;;
         macports)
-            info "MacPorts needs your password to update yt-dlp."
-            if sudo port -q selfupdate; then
-                sudo port -qN upgrade yt-dlp yt-dlp-ejs || true
+            local -a outdated
+            read -ra outdated <<< "$(macports_outdated | tr '\n' ' ')"
+            if ((${#outdated[@]} == 0)); then
+                success "yt-dlp is up to date."
+            else
+                info "There's an update for ${outdated[*]}. MacPorts needs your password to install it."
+                if sudo port -q selfupdate; then
+                    sudo port -qN upgrade "${outdated[@]}" || true
+                fi
             fi
             ;;
     esac
