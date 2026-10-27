@@ -34,13 +34,13 @@ sudo apt-mark hold zsh zsh-common
 
 ## Releasing
 
-Set `SETUP_VERSION` in `src/setup-yt-dlp.zsh` and commit it, then push a tag for that version:
+Push a tag for the version:
 
 ```sh
 git tag -a v1.0.0-beta.2 -m "setup-yt-dlp 1.0.0-beta.2"
 git push origin v1.0.0-beta.2
 ```
 
-The release workflow runs the tests, then publishes a release with `setup-yt-dlp.tar.xz` and its checksum. It stops if the tag and `SETUP_VERSION` differ. A version with a hyphen, such as `1.0.0-beta.2`, becomes a pre-release.
+The release workflow runs the tests, then publishes a release with `setup-yt-dlp.tar.xz` and its checksum. The script in the repository says its version is `dev`; the copy in the archive gets the tag's. A tag with a hyphen, such as `v1.0.0-beta.2`, becomes a pre-release.
 
 The notes list the commits since the previous `v` tag. A subject starting with Add or Install goes under New, one starting with Fix under Fixes, and the rest under Changes. Commits that only touch tests, CI or this file go in a collapsed section, and a commit that was reverted is left out along with its revert.

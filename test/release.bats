@@ -5,7 +5,6 @@ setup() {
     load test_helper/common
     common_setup
     ROOT=$(cd "$BATS_TEST_DIRNAME/.." && pwd)
-    VERSION=$(sed -n 's/^typeset -gr SETUP_VERSION=//p' "$ROOT/src/setup-yt-dlp.zsh")
     export GIT_AUTHOR_NAME=Test GIT_AUTHOR_EMAIL=test@example.com
     export GIT_COMMITTER_NAME=Test GIT_COMMITTER_EMAIL=test@example.com
 }
@@ -33,28 +32,45 @@ commit() {
 
 @test "the archive holds the script and the license" {
     needs_gnu_tar
-    run -0 package "v$VERSION"
+    run -0 package v1.2.3-beta.4
     run -0 tar -tvJf "$BATS_TEST_TMPDIR/dist/setup-yt-dlp.tar.xz"
-    assert_line --regexp "^drwxr-xr-x 0/0 .* setup-yt-dlp-$VERSION/$"
-    assert_line --regexp "^-rw-r--r-- 0/0 .* setup-yt-dlp-$VERSION/LICENSE$"
-    assert_line --regexp "^-rwxr-xr-x 0/0 .* setup-yt-dlp-$VERSION/setup-yt-dlp\.zsh$"
+    assert_line --regexp "^drwxr-xr-x 0/0 .* setup-yt-dlp-1\.2\.3-beta\.4/$"
+    assert_line --regexp "^-rw-r--r-- 0/0 .* setup-yt-dlp-1\.2\.3-beta\.4/LICENSE$"
+    assert_line --regexp "^-rwxr-xr-x 0/0 .* setup-yt-dlp-1\.2\.3-beta\.4/setup-yt-dlp\.zsh$"
     assert_equal "${#lines[@]}" 3
     cd "$BATS_TEST_TMPDIR/dist"
     run -0 sha256sum -c setup-yt-dlp.tar.xz.sha256
 }
 
+@test "the packaged script has the tag's version" {
+    needs_gnu_tar
+    run -0 package v1.2.3-beta.4
+    tar -xJf "$BATS_TEST_TMPDIR/dist/setup-yt-dlp.tar.xz" -C "$BATS_TEST_TMPDIR"
+    run -0 "$ZSH_BIN" "$BATS_TEST_TMPDIR/setup-yt-dlp-1.2.3-beta.4/setup-yt-dlp.zsh" --version
+    assert_output 'setup-yt-dlp 1.2.3-beta.4'
+    # The version is all that differs from the script in the repository.
+    run -1 diff "$ROOT/src/setup-yt-dlp.zsh" "$BATS_TEST_TMPDIR/setup-yt-dlp-1.2.3-beta.4/setup-yt-dlp.zsh"
+    assert_output --regexp '^[0-9]+c[0-9]+
+< typeset -gr SETUP_VERSION=dev
+---
+> typeset -gr SETUP_VERSION=1\.2\.3-beta\.4$'
+}
+
 @test "the same commit gives the same archive" {
     needs_gnu_tar
-    run -0 package "v$VERSION"
+    run -0 package v1.2.3
     mv "$BATS_TEST_TMPDIR/dist" "$BATS_TEST_TMPDIR/first"
-    run -0 package "v$VERSION"
+    run -0 package v1.2.3
     run -0 cmp "$BATS_TEST_TMPDIR/first/setup-yt-dlp.tar.xz" "$BATS_TEST_TMPDIR/dist/setup-yt-dlp.tar.xz"
 }
 
-@test "the tag has to match the script's version" {
-    run -1 --separate-stderr package v0.0.1
-    assert_stderr "error: the tag is v0.0.1, but src/setup-yt-dlp.zsh has version $VERSION; tag v$VERSION, or change SETUP_VERSION"
-    run -1 package "$VERSION"
+@test "a tag that isn't a version is refused" {
+    local tag
+    for tag in 1.2.3 v1.2 vnext v1.2.3/x; do
+        run -1 --separate-stderr package "$tag"
+        assert_stderr "error: $tag isn't a version tag, such as v1.0.0 or v1.0.0-beta.1"
+    done
+    assert [ ! -e "$BATS_TEST_TMPDIR/dist" ]
 }
 
 @test "the notes group the commits since the last release" {

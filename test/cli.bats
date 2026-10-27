@@ -32,9 +32,9 @@ teardown() {
     assert_line --index 0 'Usage: setup-yt-dlp.zsh [options]'
 }
 
-@test "--version shows the version" {
+@test "--version shows the version, which is dev outside a release" {
     run -0 setup_script --version
-    assert_output --regexp '^setup-yt-dlp [0-9]+\.[0-9]+\.[0-9]+$'
+    assert_output 'setup-yt-dlp dev'
 }
 
 @test "-V is the same as --version" {

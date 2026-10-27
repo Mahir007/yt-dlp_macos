@@ -108,12 +108,12 @@ ctrl_c_after() {
 
 @test "--dry-run says so in the header" {
     run -0 in_script 'opts[dry_run]=1; ui_init; ui_header'
-    assert_output --regexp '^yt-dlp setup [0-9.]+ \(dry run: nothing will be changed\)$'
+    assert_output --regexp '^yt-dlp setup [0-9A-Za-z.-]+ \(dry run: nothing will be changed\)$'
 }
 
 @test "the log has each command, its output and its status" {
     run -1 in_script 'setup_args=(-v --manager "two words"); run_step a doing done -- echo hello; run_step b doing done -- sh -c "echo bye; exit 1"'
-    run -0 sed -E -e 's/^(yt-dlp setup) [0-9.]+,/\1 V,/' -e 's/^==> \[[0-9:]{8}\]/==> [T]/' "$LOGS"/*.log
+    run -0 sed -E -e 's/^(yt-dlp setup) [0-9A-Za-z.-]+,/\1 V,/' -e 's/^==> \[[0-9:]{8}\]/==> [T]/' "$LOGS"/*.log
     assert_output "yt-dlp setup V, arguments: -v --manager 'two words'
 ==> [T] echo hello
 hello

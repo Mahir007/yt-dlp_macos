@@ -34,7 +34,9 @@ zmodload zsh/datetime   # EPOCHREALTIME, strftime
 zmodload zsh/zselect    # sleeping for a fraction of a second
 zmodload -F zsh/files b:zf_mkdir b:zf_mv b:zf_rm b:zf_rmdir
 
-typeset -gr SETUP_VERSION=1.0.0
+# The release workflow writes the tag's version here, in the copy it
+# packages.
+typeset -gr SETUP_VERSION=dev
 
 # Name to show in messages. $0 isn't a regular file when the script comes
 # from a pipe or a process substitution such as `zsh <(curl ...)`.
