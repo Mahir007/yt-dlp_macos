@@ -238,7 +238,6 @@ run_step() {
     else
         ui_fail "$subject" failed
         (( opts[verbose] )) || ui_tail "$out"
-        ui_detail "Log: ${(D)log_file}"
     fi
     zf_rm -f $out
     return rc
@@ -565,8 +564,9 @@ typeset -gr RC_NOTE='# Added by setup-yt-dlp.zsh. Its --uninstall option removes
 typeset -gr RC_END='# <<< setup-yt-dlp <<<'
 
 # What rc_rewrite found: a block of the script's lines, and lines that the
-# bash version of the script added.
-typeset -gi rc_had_block=0 rc_had_legacy=0
+# bash version of the script added. rc_change sets rc_created when it
+# creates the file.
+typeset -gi rc_had_block=0 rc_had_legacy=0 rc_created=0
 
 # A temporary file that file_write hasn't moved into place yet.
 typeset -g file_tmp=''
@@ -692,6 +692,7 @@ rc_change() {
     if (( opts[dry_run] )); then
         ui_skip "$subject" "would have the setup-yt-dlp lines $done"
     else
+        [[ -e $file || -L $file ]] || rc_created=1
         if ! file_write $file "$new"; then
             ui_fail "$subject" "couldn't be written"
             return 1
@@ -720,6 +721,179 @@ homebrew_shell_setup() {
         lines+=( 'export PATH="'${bin/#${(b)HOME}/\$HOME}':$PATH"' )
     fi
     rc_change "${lines[@]}"
+}
+
+# ----------------------------------------------------------------------------
+# What the script has done
+# ----------------------------------------------------------------------------
+
+# A record of what the script installed and changed, so that uninstalling
+# removes only that. KEY=VALUE lines, in the order things happened:
+#   manager=homebrew           the package manager used
+#   package=ffmpeg             a package the script installed
+#   pip=certifi                a package pip added to the user's site-packages
+#   zshrc=/Users/me/.zshrc     a zsh startup file the script added lines to
+#   created=/Users/me/.zshrc   a file the script created
+#   select=python3=none        a `port select` group and its earlier choice
+# The file is read line by line, never sourced.
+typeset -ga state=()
+
+state_file() {
+    print -r -- "$HOME/Library/Application Support/yt-dlp-setup/state"
+}
+
+# state_load: read the state file, if there is one.
+state_load() {
+    state=()
+    local file=$(state_file) line
+    [[ -r $file ]] || return 0
+    for line in "${(@f)"$(<$file)"}"; do
+        [[ $line == [a-z]##=* && $line != format=* ]] && state+=("$line")
+    done
+    return 0
+}
+
+# state_values KEY: print each value recorded for KEY, one per line.
+state_values() {
+    local -a values=( ${${(M)state:#$1=*}#$1=} )
+    (( $#values )) && print -rl -- $values
+    return 0
+}
+
+# state_add KEY VALUE: record VALUE for KEY, unless it's there already, and
+# save the state file. Does nothing with --dry-run.
+state_add() {
+    (( opts[dry_run] )) && return 0
+    (( ${state[(Ie)$1=$2]} )) && return 0
+    state+=("$1=$2")
+    local file=$(state_file)
+    if ! { zf_mkdir -p ${file:h} 2>/dev/null &&
+           file_write $file "# Written by setup-yt-dlp.zsh, and read by its --uninstall option.
+format=1
+${(F)state}
+" }; then
+        die "couldn't save ${(D)file}"
+    fi
+}
+
+# ----------------------------------------------------------------------------
+# Installing
+# ----------------------------------------------------------------------------
+
+# What gets installed, in this order. bash is there for
+# youtube-downloader-pro.command, which runs with Homebrew's bash.
+typeset -gra HOMEBREW_PACKAGES=(bash ffmpeg atomicparsley python3 deno)
+typeset -gra MACPORTS_PACKAGES=(ffmpeg AtomicParsley py-pip deno)
+# yt-dlp's optional Python packages: from pip with Homebrew, as ports with
+# MacPorts.
+typeset -gra PIP_PACKAGES=(websockets requests mutagen pycryptodomex curl-cffi yt-dlp-ejs)
+typeset -gra MACPORTS_PY_PACKAGES=(py-websockets py-requests py-mutagen py-pycryptodomex py-curl-cffi yt-dlp-ejs)
+
+# What went wrong during the run, for the summary at the end.
+typeset -ga problems=()
+
+# install_package NAME [ARGS...]: install package NAME, passing ARGS to the
+# manager, unless it's installed already. Records it when this run installs
+# it.
+install_package() {
+    local version
+    if version=$(pkg_version $1); then
+        ui_ok "$1" "already installed ${c[dim]}($version)${c[reset]}"
+    elif pkg_install "$@"; then
+        state_add package $1
+    else
+        problems+=("$1 couldn't be installed")
+        return 1
+    fi
+}
+
+# pip_user_packages: print the packages in the user's site-packages of
+# Homebrew's Python, one per line.
+pip_user_packages() {
+    local line
+    for line in ${(f)"$($pm_prefix/bin/python3 -m pip list --user --format=freeze 2>/dev/null)"}; do
+        # "certifi==2026.10.5", or "name @ file:///..." for a local install.
+        [[ $line == [[:alnum:]]* ]] && print -r -- ${line%%[=@ ]*}
+    done
+    return 0
+}
+
+# install_pip_packages: install PIP_PACKAGES into Homebrew's Python, and
+# record everything pip added, dependencies too, so uninstalling can remove
+# them.
+install_pip_packages() {
+    local name version
+    if (( ! opts[dry_run] )) && ! pkg_version python3 >/dev/null; then
+        for name in $PIP_PACKAGES; do
+            ui_skip $name "skipped: python3 isn't installed"
+        done
+        problems+=("the Python packages were skipped, as python3 isn't installed")
+        return 1
+    fi
+    local -a before=( ${(f)"$(pip_user_packages)"} ) after
+    for name in $PIP_PACKAGES; do
+        if version=$(pip_version $name); then
+            ui_ok $name "already installed ${c[dim]}($version)${c[reset]}"
+        elif ! pip_install $name; then
+            problems+=("$name couldn't be installed")
+        fi
+    done
+    after=( ${(f)"$(pip_user_packages)"} )
+    for name in ${after:|before}; do
+        state_add pip $name
+    done
+}
+
+# install_settings: the ~/.zshrc lines for Homebrew, or `port select` for
+# MacPorts.
+install_settings() {
+    case $opts[manager] in
+        homebrew)
+            local file=$(rc_file)
+            if homebrew_shell_setup; then
+                state_add zshrc $file
+                (( rc_created )) && state_add created $file
+            else
+                problems+=("${(D)file} couldn't be set up")
+            fi
+            ;;
+        macports)
+            macports_select_python || problems+=("MacPorts' Python couldn't be selected")
+            local group
+            local -a earlier
+            for group in ${(ok)port_select_before}; do
+                # Keep the choice from before the first run. (The array is
+                # needed: inside (( )), ${(M)state...} would match against
+                # all of state joined into one string.)
+                earlier=( ${(M)state:#select=$group=*} )
+                (( $#earlier )) || state_add select "$group=$port_select_before[$group]"
+            done
+            ;;
+    esac
+    return 0
+}
+
+# install_summary START: say how the run that began at START went, and fail
+# if anything went wrong.
+install_summary() {
+    local took=$(ui_duration $(( EPOCHREALTIME - $1 ))) problem version
+    print
+    if (( opts[dry_run] )); then
+        print -r -- "Dry run finished. Nothing was changed."
+    elif (( $#problems )); then
+        print -r -- "${c[red]}${sym[fail]}${c[reset]} ${c[bold]}Finished in $took, with problems:${c[reset]}"
+        for problem in $problems; do
+            print -r -- "    $problem"
+        done
+        [[ -n $log_file ]] && print -r -- "  The log has the details: ${(D)log_file}"
+        print -r -- "  Run the script again to retry."
+        return 1
+    else
+        version=$(pkg_version yt-dlp)
+        print -r -- "${c[green]}${sym[ok]}${c[reset]} ${c[bold]}Done in $took.${c[reset]} yt-dlp${version:+ $version} is installed."
+        print -r -- "  Open a new terminal window to start using it."
+    fi
+    return 0
 }
 
 # ----------------------------------------------------------------------------
@@ -869,8 +1043,43 @@ cmd_install() {
     pm_select
     pm_init
     print -r -- "Using $PM_TITLE[$opts[manager]] $pm_version"
-    # Still being ported from archive/setup-yt-dlp.sh.
-    die "installing isn't implemented yet"
+
+    state_load
+    local earlier=$(state_values manager) name
+    if [[ -n $earlier && $earlier != $opts[manager] ]]; then
+        die "yt-dlp was set up with $PM_TITLE[$earlier] before; run with --uninstall first to switch to $PM_TITLE[$opts[manager]]"
+    fi
+    state_add manager $opts[manager]
+    local -F start=$EPOCHREALTIME
+
+    ui_section Packages
+    case $opts[manager] in
+        homebrew)
+            for name in $HOMEBREW_PACKAGES; do
+                install_package $name
+            done
+            ui_section "Python packages"
+            install_pip_packages
+            ui_section yt-dlp
+            install_package yt-dlp
+            ;;
+        macports)
+            for name in $MACPORTS_PACKAGES; do
+                install_package $name
+            done
+            ui_section "Python packages"
+            for name in $MACPORTS_PY_PACKAGES; do
+                install_package $name
+            done
+            ui_section yt-dlp
+            # Without the ffmpeg variant, as the bash version did, since
+            # ffmpeg is installed above.
+            install_package yt-dlp -ffmpeg
+            ;;
+    esac
+    ui_section Settings
+    install_settings
+    install_summary $start
 }
 
 # Still being ported from archive/setup-yt-dlp.sh.

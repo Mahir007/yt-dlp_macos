@@ -2,7 +2,7 @@
 # A fake Homebrew Python, for pip and `-m site --user-base`. Installed
 # packages are files in $FAKE_STATE/pip holding their version. Every call is
 # logged to $FAKE_STATE/calls. Creating $FAKE_STATE/fail/NAME makes
-# installing NAME fail.
+# installing NAME fail. Installing requests also installs two dependencies.
 set -u
 state=$FAKE_STATE/pip
 echo "python3 $*" >>"$FAKE_STATE/calls"
@@ -25,14 +25,24 @@ case $action in
         fi
         printf 'Name: %s\nVersion: %s\nLocation: %s\n' "$name" "$(cat "$state/$name")" "$HOME/Library/Python/3.15/lib/python/site-packages"
         ;;
+    list)
+        # pip list --user --format=freeze
+        for file in "$state"/*; do
+            [[ -f $file ]] && echo "${file##*/}==$(cat "$file")"
+        done
+        ;;
     install)
         if [[ -e $FAKE_STATE/fail/$name ]]; then
             echo "ERROR: No matching distribution found for $name" >&2
             exit 1
         fi
         mkdir -p "$state"
-        echo 1.0 >"$state/$name"
-        echo "Successfully installed $name-1.0"
+        added=$name
+        [[ $name == requests ]] && added="certifi urllib3 $name"
+        for package in $added; do
+            [[ -f $state/$package ]] || echo 1.0 >"$state/$package"
+        done
+        echo "Successfully installed $added"
         ;;
     uninstall)
         [[ -f $state/$name ]] || { echo "WARNING: Skipping $name as it is not installed." >&2; exit 0; }
