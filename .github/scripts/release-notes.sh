@@ -1,6 +1,6 @@
 #!/bin/bash
 # release-notes.sh TAG REPO SHA256FILE...: print the release notes for TAG,
-# in Markdown: how to install it, the commits since the previous v* tag
+# in Markdown: how to install it, the commits since the previous release
 # grouped by kind, and the archives' checksums. REPO is owner/name.
 set -euo pipefail
 
@@ -10,7 +10,12 @@ sums=("${@:3}")
 version=${tag#v}
 url=https://github.com/$repo
 
-previous=$(git describe --tags --abbrev=0 --match 'v*' "$tag^" 2>/dev/null || true)
+# A pre-release lists the commits since the previous tag of any kind. A
+# final release skips the pre-releases before it, so it lists everything
+# since the previous final release.
+exclude=()
+[[ $version == *-* ]] || exclude=(--exclude 'v*-*')
+previous=$(git describe --tags --abbrev=0 --match 'v*' "${exclude[@]+"${exclude[@]}"}" "$tag^" 2>/dev/null || true)
 range=${previous:+$previous..}$tag
 
 # kind SHA SUBJECT: print which group a commit goes in. Commits that only
