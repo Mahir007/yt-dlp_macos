@@ -44,6 +44,6 @@ jobs:
           gh release create "$GITHUB_REF_NAME" \
             dist/setup-yt-dlp.tar.xz dist/setup-yt-dlp.tar.xz.sha256 \
             dist/setup-yt-dlp-standalone.tar.xz dist/setup-yt-dlp-standalone.tar.xz.sha256 \
-            --title "setup-yt-dlp ${GITHUB_REF_NAME#v}" \
+            --title "${GITHUB_REF_NAME#v}" \
             --notes-file "$RUNNER_TEMP/notes.md" \
             --verify-tag "${flags[@]}"
