@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# Saving YouTube Downloader Pro, filled in from bin/youtube-downloader-pro.command.
+# Saving YouTube Downloader Pro, filled in from src/youtube-downloader-pro.command.
 #
 # The code passed to in_script is zsh, expanded by zsh:
 # shellcheck disable=SC2016
@@ -7,7 +7,7 @@
 setup() {
     load test_helper/common
     common_setup
-    TEMPLATE=$BATS_TEST_DIRNAME/../bin/youtube-downloader-pro.command
+    TEMPLATE=$BATS_TEST_DIRNAME/../src/youtube-downloader-pro.command
     SAVED=$HOME/Downloads/yt.command
     mkdir -p "$HOME/Downloads"
     # A curl that "downloads" the template from this checkout, and notes
@@ -72,10 +72,10 @@ MANAGER=@MANAGER@'
 
 @test "the template comes from main outside a release, and from the tag in one" {
     run -0 in_script 'downloader_url'
-    assert_output https://raw.githubusercontent.com/Mahir007/yt-dlp_macos/main/bin/youtube-downloader-pro.command
+    assert_output https://raw.githubusercontent.com/Mahir007/yt-dlp_macos/main/src/youtube-downloader-pro.command
     sed 's/^typeset -gr SETUP_VERSION=0\.0\.0-dev$/typeset -gr SETUP_VERSION=1.2.3/' "$SCRIPT" >"$BATS_TEST_TMPDIR/release.zsh"
     SCRIPT=$BATS_TEST_TMPDIR/release.zsh run -0 in_script 'downloader_url'
-    assert_output https://raw.githubusercontent.com/Mahir007/yt-dlp_macos/v1.2.3/bin/youtube-downloader-pro.command
+    assert_output https://raw.githubusercontent.com/Mahir007/yt-dlp_macos/v1.2.3/src/youtube-downloader-pro.command
 }
 
 @test "Homebrew: the saved script has Homebrew's values" {

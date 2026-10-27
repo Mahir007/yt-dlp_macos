@@ -1100,10 +1100,10 @@ install_run() {
 # YouTube Downloader Pro
 # ----------------------------------------------------------------------------
 
-# bin/youtube-downloader-pro.command in the repository is a template. Its
+# src/youtube-downloader-pro.command in the repository is a template. Its
 # @BASH@, @PREFIX@ and @MANAGER@ are filled in for the manager used.
 typeset -gr DOWNLOADER_REPO=Mahir007/yt-dlp_macos
-typeset -gr DOWNLOADER_PATH=bin/youtube-downloader-pro.command
+typeset -gr DOWNLOADER_PATH=src/youtube-downloader-pro.command
 typeset -gr DOWNLOADER_NAME='YouTube Downloader Pro.command'
 
 # The download, until downloader_save has read it.
