@@ -93,10 +93,10 @@ MANAGER=macports"
 
 @test "a prefix with a quote in it is quoted" {
     use_fake homebrew
-    PREFIX="$BATS_TEST_TMPDIR/it's"
-    mkdir -p "$PREFIX/bin"
-    ln -s "$FAKES/brew" "$BASH" "$PREFIX/bin/"
-    PATH=$PREFIX/bin:$PATH run -0 save homebrew
+    local prefix="$BATS_TEST_TMPDIR/it's"
+    mkdir -p "$prefix/bin"
+    ln -s "$FAKES/brew" "$BASH" "$prefix/bin/"
+    PATH=$prefix/bin:$PATH run -0 save homebrew
     run -0 grep '^PREFIX=' "$SAVED"
     assert_output "PREFIX=$BATS_TEST_TMPDIR/it\\'s"
 }
@@ -104,7 +104,9 @@ MANAGER=macports"
 @test "the saved script runs and updates yt-dlp with Homebrew" {
     ((BASH_VERSINFO[0] >= 4)) || skip "needs bash 4 or later to run the saved script"
     use_manager homebrew
-    stub yt-dlp 'exit 0'
+    # In the prefix, where the saved script's PATH finds it.
+    printf '#!/bin/sh\n' >"$PREFIX/bin/yt-dlp"
+    chmod +x "$PREFIX/bin/yt-dlp"
     run -0 save homebrew
     run -0 env PATH=/usr/bin:/bin "$SAVED" <<<q
     assert_output --partial 'Goodbye!'
@@ -116,7 +118,9 @@ MANAGER=macports"
 @test "the saved script updates yt-dlp with MacPorts" {
     ((BASH_VERSINFO[0] >= 4)) || skip "needs bash 4 or later to run the saved script"
     use_manager macports
-    stub yt-dlp 'exit 0'
+    # In the prefix, where the saved script's PATH finds it.
+    printf '#!/bin/sh\n' >"$PREFIX/bin/yt-dlp"
+    chmod +x "$PREFIX/bin/yt-dlp"
     run -0 save macports
     run -0 env PATH="$STUBS:/usr/bin:/bin" "$SAVED" <<<q
     assert_output --partial 'Goodbye!'
