@@ -13,7 +13,7 @@ teardown() {
     common_teardown
 }
 
-# package TAG: build the archive for TAG into $BATS_TEST_TMPDIR/dist.
+# package VERSION: build the archives for VERSION into $BATS_TEST_TMPDIR/dist.
 package() {
     (cd "$ROOT" && .github/scripts/package.sh "$1" "$BATS_TEST_TMPDIR/dist")
 }
@@ -32,7 +32,7 @@ commit() {
 
 @test "the archive holds the script and the license, with no folder" {
     needs_gnu_tar
-    run -0 package v1.2.3-beta.4
+    run -0 package 1.2.3-beta.4
     run -0 tar -tvJf "$BATS_TEST_TMPDIR/dist/setup-yt-dlp.tar.xz"
     assert_line --regexp "^-rw-r--r-- 0/0 .* LICENSE$"
     assert_line --regexp "^-rwxr-xr-x 0/0 .* setup-yt-dlp\.zsh$"
@@ -41,9 +41,9 @@ commit() {
     run -0 sha256sum -c setup-yt-dlp.tar.xz.sha256
 }
 
-@test "the packaged script has the tag's version" {
+@test "the packaged script has the version" {
     needs_gnu_tar
-    run -0 package v1.2.3-beta.4
+    run -0 package 1.2.3-beta.4
     tar -xJf "$BATS_TEST_TMPDIR/dist/setup-yt-dlp.tar.xz" -C "$BATS_TEST_TMPDIR"
     run -0 "$ZSH_BIN" "$BATS_TEST_TMPDIR/setup-yt-dlp.zsh" --version
     assert_output 'setup-yt-dlp 1.2.3-beta.4'
@@ -55,9 +55,9 @@ commit() {
 > typeset -gr SETUP_VERSION=1\.2\.3-beta\.4$'
 }
 
-@test "the standalone archive holds its script, with the tag's version, and the license" {
+@test "the standalone archive holds its script, with the version, and the license" {
     needs_gnu_tar
-    run -0 package v1.2.3-beta.4
+    run -0 package 1.2.3-beta.4
     run -0 tar -tvJf "$BATS_TEST_TMPDIR/dist/setup-yt-dlp-standalone.tar.xz"
     assert_line --regexp "^-rw-r--r-- 0/0 .* LICENSE$"
     assert_line --regexp "^-rwxr-xr-x 0/0 .* setup-yt-dlp-standalone\.zsh$"
@@ -71,20 +71,27 @@ commit() {
 
 @test "the same commit gives the same archive" {
     needs_gnu_tar
-    run -0 package v1.2.3
+    run -0 package 1.2.3
     mv "$BATS_TEST_TMPDIR/dist" "$BATS_TEST_TMPDIR/first"
-    run -0 package v1.2.3
+    run -0 package 1.2.3
     run -0 cmp "$BATS_TEST_TMPDIR/first/setup-yt-dlp.tar.xz" "$BATS_TEST_TMPDIR/dist/setup-yt-dlp.tar.xz"
     run -0 cmp "$BATS_TEST_TMPDIR/first/setup-yt-dlp-standalone.tar.xz" "$BATS_TEST_TMPDIR/dist/setup-yt-dlp-standalone.tar.xz"
 }
 
-@test "a tag that isn't a version is refused" {
-    local tag
-    for tag in 1.2.3 v1.2 vnext v1.2.3/x; do
-        run -1 --separate-stderr package "$tag"
-        assert_stderr "error: $tag isn't a version tag, such as v1.0.0 or v1.0.0-beta.1"
+@test "a CI build has the commit in its version" {
+    needs_gnu_tar
+    run -0 package 0.0.0-dev+1a2b3c4
+    tar -xJf "$BATS_TEST_TMPDIR/dist/setup-yt-dlp.tar.xz" -C "$BATS_TEST_TMPDIR"
+    run -0 "$ZSH_BIN" "$BATS_TEST_TMPDIR/setup-yt-dlp.zsh" --version
+    assert_output 'setup-yt-dlp 0.0.0-dev+1a2b3c4'
+}
+
+@test "a version that isn't one is refused" {
+    local version
+    for version in v1.2.3 1.2 next 1.2.3/x; do
+        run -1 --separate-stderr package "$version"
+        assert_stderr "error: $version isn't a version, such as 1.0.0, 1.0.0-beta.1 or 0.0.0-dev+1a2b3c4"
     done
-    assert [ ! -e "$BATS_TEST_TMPDIR/dist" ]
 }
 
 @test "the notes group the commits since the last release" {

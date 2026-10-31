@@ -2,7 +2,7 @@
 
 ## Layout
 
-- `src/` has the two setup scripts and the downloader scripts. `setup-yt-dlp-standalone.zsh` installs yt-dlp_macos, ffmpeg and ffprobe into `/usr/local/bin` without a package manager. `youtube-downloader-pro.command` is a template: the setup script downloads it from the release's tag (from `main` for version `0.0.0-dev`) and fills in `@BASH@`, `@PREFIX@` and `@MANAGER@`. The standalone script saves `youtube-downloader-pro-standalone.command` as it is.
+- `src/` has the two setup scripts and the downloader scripts. `setup-yt-dlp-standalone.zsh` installs yt-dlp_macos, ffmpeg and ffprobe into `/usr/local/bin` without a package manager. `youtube-downloader-pro.command` is a template: the setup script downloads it from the release's tag (from `main` for version `0.0.0-dev`, and from the commit for a CI build) and fills in `@BASH@`, `@PREFIX@` and `@MANAGER@`. The standalone script saves `youtube-downloader-pro-standalone.command` as it is.
 - `test/` has the bats tests, with those for the standalone script in `test/standalone/`. `test/bats` and `test/test_helper/bats-*` are git submodules, and `test/fakes/` has the fake `brew`, `port`, `python3`, `sudo` and `curl` they run against.
 - `.github/workflows/` has the CI and release workflows, and `.github/scripts/` the scripts that build a release's archives and notes.
 
@@ -20,7 +20,7 @@ The tests run the script with a temporary `HOME` and a `PATH` of only the fakes,
 
 ## zsh 5.8 and 5.7.1
 
-The setup script has to run on zsh 5.8, the version macOS 12 ships, and the standalone script on zsh 5.7.1, the version macOS 10.15 ships. CI runs the tests on Linux with Debian 11's zsh 5.8 package and Debian 10's zsh 5.7.1 package, and on macOS 15 with its own zsh.
+The setup script has to run on zsh 5.8, the version macOS 12 ships, and the standalone script on zsh 5.7.1, the version macOS 10.15 ships. CI runs the tests on Linux with Debian 11's zsh 5.8 package and Debian 10's zsh 5.7.1 package, and on the latest macOS with its own zsh.
 
 zsh 5.7.1 has no `zparseopts -F`, which is why the standalone script parses its options differently.
 
@@ -42,6 +42,8 @@ git tag -a v1.0.0-beta.2 -m "setup-yt-dlp 1.0.0-beta.2"
 git push origin v1.0.0-beta.2
 ```
 
-The release workflow runs the tests, then publishes a release with `setup-yt-dlp.tar.xz`, `setup-yt-dlp-standalone.tar.xz` and their checksums. The scripts in the repository say their version is `0.0.0-dev`; the copies in the archives get the tag's. A tag with a hyphen, such as `v1.0.0-beta.2`, becomes a pre-release.
+The scripts in the repository say their version is `0.0.0-dev`. CI builds `setup-yt-dlp.tar.xz` and `setup-yt-dlp-standalone.tar.xz` on every push, with a version in the copies of the scripts in them, and checks that macOS's tar extracts them and the scripts start. On a branch the version is `0.0.0-dev+<commit>`, and the archives are kept for a day as the run's `release` artifact.
+
+The release workflow runs CI with the tag's version, then publishes a release with CI's archives, their checksums and an attestation of where they were built. A tag with a hyphen, such as `v1.0.0-beta.2`, becomes a pre-release.
 
 The notes list the commits since the previous `v` tag. A subject starting with Add or Install goes under New, one starting with Fix under Fixes, and the rest under Changes. Commits that only touch tests, CI or this file go in a collapsed section, and a commit that was reverted is left out along with its revert.
