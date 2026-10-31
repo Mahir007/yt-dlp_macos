@@ -70,12 +70,15 @@ answer() {
 MANAGER=@MANAGER@'
 }
 
-@test "the template comes from main outside a release, and from the tag in one" {
+@test "the template comes from main outside a release, from the tag in one, and from the commit in a CI build" {
     run -0 in_script 'downloader_url'
     assert_output https://raw.githubusercontent.com/Mahir007/yt-dlp_macos/main/src/youtube-downloader-pro.command
     sed 's/^typeset -gr SETUP_VERSION=0\.0\.0-dev$/typeset -gr SETUP_VERSION=1.2.3/' "$SCRIPT" >"$BATS_TEST_TMPDIR/release.zsh"
     SCRIPT=$BATS_TEST_TMPDIR/release.zsh run -0 in_script 'downloader_url'
     assert_output https://raw.githubusercontent.com/Mahir007/yt-dlp_macos/v1.2.3/src/youtube-downloader-pro.command
+    sed 's/^typeset -gr SETUP_VERSION=0\.0\.0-dev$/typeset -gr SETUP_VERSION=0.0.0-dev+1a2b3c4/' "$SCRIPT" >"$BATS_TEST_TMPDIR/ci.zsh"
+    SCRIPT=$BATS_TEST_TMPDIR/ci.zsh run -0 in_script 'downloader_url'
+    assert_output https://raw.githubusercontent.com/Mahir007/yt-dlp_macos/1a2b3c4/src/youtube-downloader-pro.command
 }
 
 @test "Homebrew: the saved script has Homebrew's values" {
