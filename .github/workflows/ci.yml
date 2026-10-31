@@ -1,97 +1,141 @@
 name: CI
 
 on:
-  # Branches only: a release tag runs this through release.yml instead.
   push:
     branches: ['**']
-    paths-ignore:
-      - '**.md'
-      - LICENSE
-  workflow_call:
+    paths-ignore: ['**.md', LICENSE]
   workflow_dispatch:
+  # release.yml runs this to test and build a tagged version.
+  workflow_call:
+    inputs:
+      version:
+        description: The version to put in the scripts, such as 1.0.0
+        type: string
+        required: true
 
 # A newer push to the same branch cancels the run for the older one.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name != 'workflow_call' && !startsWith(github.ref, 'refs/tags/') }}
 
 permissions:
   contents: read
 
 jobs:
-  linux:
-    name: zsh 5.8 on Linux
-    runs-on: ubuntu-24.04
+  lint:
+    runs-on: ubuntu-latest
     timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      # For `zsh -n`, with the oldest zsh the setup script supports.
+      - uses: ./.github/actions/zsh
+        with:
+          version: '5.8'
+      - run: make lint
+      - name: actionlint
+        run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.12 -color
+
+  test:
+    name: test (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The oldest zsh each script supports, on Linux: GitHub has no
+          # runners with macOS 12 or 10.15.
+          - name: zsh 5.8 on Linux
+            os: ubuntu-latest
+            zsh: '5.8'
+            target: test
+          - name: zsh 5.7.1 on Linux, standalone script
+            os: ubuntu-latest
+            zsh: '5.7.1'
+            target: test-standalone
+          # And the BSD tools and zsh of a current Mac.
+          - name: zsh on macOS
+            os: macos-latest
+            target: test
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
         with:
           submodules: true
-
-      # macOS 12 ships zsh 5.8, the oldest version the script supports, and
-      # GitHub has no macOS 12 runners. Debian 11 packaged the same release.
-      - name: Install zsh 5.8
-        working-directory: ${{ runner.temp }}
-        run: |
-          base=https://archive.debian.org/debian/pool/main/z/zsh
-          curl -fsSLO "$base/zsh-common_5.8-6+deb11u1_all.deb"
-          curl -fsSLO "$base/zsh_5.8-6+deb11u1_amd64.deb"
-          sha256sum -c - <<'EOF'
-          2466fcf973de97c6ba9d4459a06a1e0faab93a44e16fe72520bba76fc377f533  zsh-common_5.8-6+deb11u1_all.deb
-          0d42edeaeb806767bcfde72eb3c29aa34f5065db061e918a2b64ebb0a9821a80  zsh_5.8-6+deb11u1_amd64.deb
-          EOF
-          sudo dpkg -i zsh-common_5.8-6+deb11u1_all.deb zsh_5.8-6+deb11u1_amd64.deb
-          /bin/zsh --version
-
-      - name: Lint
-        run: make lint
-
-      - name: Test
-        run: make test
-
-  standalone:
-    name: zsh 5.7.1 on Linux, standalone script
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v7
+      - if: matrix.zsh
+        uses: ./.github/actions/zsh
         with:
-          submodules: true
-
-      # macOS 10.15 ships zsh 5.7.1, the oldest version the standalone
-      # script supports. Debian 10 packaged the same release.
-      - name: Install zsh 5.7.1
-        working-directory: ${{ runner.temp }}
-        run: |
-          base=https://archive.debian.org/debian/pool/main/z/zsh
-          curl -fsSLO "$base/zsh-common_5.7.1-1+deb10u1_all.deb"
-          curl -fsSLO "$base/zsh_5.7.1-1+deb10u1_amd64.deb"
-          sha256sum -c - <<'EOF'
-          3f0a99094085e16e2f0d9c93f20f7cc93efb673518f51dcea37c392cff79ef02  zsh-common_5.7.1-1+deb10u1_all.deb
-          89cd7d28a5e86087c5a57f21af117e868c488d27e82dc1e905aa124aab242d61  zsh_5.7.1-1+deb10u1_amd64.deb
-          EOF
-          sudo dpkg -i zsh-common_5.7.1-1+deb10u1_all.deb zsh_5.7.1-1+deb10u1_amd64.deb
-          /bin/zsh --version
-
-      - name: Test
-        run: make test-standalone
-
-  macos:
-    name: zsh on macOS 15
-    runs-on: macos-15
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          submodules: true
-
-      - name: Show zsh version
-        run: /bin/zsh --version
-
+          version: ${{ matrix.zsh }}
       # The tests that run YouTube Downloader Pro need bash 4 or later. The
       # runner has only /bin/bash 3.2. This takes about 3 seconds.
       - name: Install bash
+        if: runner.os == 'macOS'
         run: brew install bash
+      - run: /bin/zsh --version
+      - run: make ${{ matrix.target }}
 
-      - name: Test
-        run: make test
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.package.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build the archives
+        id: package
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          version=${VERSION:-0.0.0-dev+${GITHUB_SHA::7}}
+          .github/scripts/package.sh "$version" dist
+          echo "version=$version" >>"$GITHUB_OUTPUT"
+
+      - name: Summary
+        env:
+          VERSION: ${{ steps.package.outputs.version }}
+        run: |
+          {
+            echo "### setup-yt-dlp $VERSION"
+            echo
+            echo "| Archive | Size | SHA-256 |"
+            echo "| --- | --- | --- |"
+            for archive in dist/*.tar.xz; do
+              echo "| $(basename "$archive") | $(stat -c %s "$archive") bytes | \`$(cut -d' ' -f1 "$archive.sha256")\` |"
+            done
+          } >>"$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release
+          path: |
+            dist/*.tar.xz
+            dist/*.tar.xz.sha256
+          retention-days: 1
+          if-no-files-found: error
+
+  # The checks a user's Mac would make: macOS's tar extracts the archives,
+  # and the scripts in them start and say their version.
+  check:
+    needs: build
+    runs-on: macos-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: release
+          path: dist
+      - name: Check the archives
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          for name in setup-yt-dlp setup-yt-dlp-standalone; do
+            mkdir "$RUNNER_TEMP/$name"
+            tar -xf "dist/$name.tar.xz" -C "$RUNNER_TEMP/$name"
+            ls -l "$RUNNER_TEMP/$name"
+            got=$(/bin/zsh "$RUNNER_TEMP/$name/$name.zsh" --version)
+            echo "$got"
+            if [[ $got != "$name $VERSION" ]]; then
+              echo "::error::$name.zsh says '$got', not '$name $VERSION'"
+              exit 1
+            fi
+          done
