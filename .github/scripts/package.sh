@@ -1,18 +1,17 @@
 #!/bin/bash
-# package.sh TAG [DIR]: build the release archives for TAG, such as v1.0.0,
-# in DIR (default dist): setup-yt-dlp.tar.xz and
+# package.sh VERSION [DIR]: build the archives for VERSION, such as 1.0.0 or
+# 0.0.0-dev+1a2b3c4, in DIR (default dist): setup-yt-dlp.tar.xz and
 # setup-yt-dlp-standalone.tar.xz, each holding its script and LICENSE with
 # no folder around them, and their SHA-256s in NAME.tar.xz.sha256. The
 # scripts in the repository say their version is 0.0.0-dev; the copies in
-# the archives get the tag's. Needs GNU tar. Run from the top of the repo.
+# the archives get VERSION. Needs GNU tar. Run from the top of the repo.
 set -euo pipefail
 
-tag=$1
+version=$1
 out=${2:-dist}
-version=${tag#v}
 
-if [[ ! $tag =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
-    echo "error: $tag isn't a version tag, such as v1.0.0 or v1.0.0-beta.1" >&2
+if [[ ! $version =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?(\+[0-9A-Za-z.]+)?$ ]]; then
+    echo "error: $version isn't a version, such as 1.0.0, 1.0.0-beta.1 or 0.0.0-dev+1a2b3c4" >&2
     exit 1
 fi
 

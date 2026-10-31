@@ -1,0 +1,56 @@
+name: Install an old zsh
+description: >-
+  Installs Debian's package of zsh 5.8, the version macOS 12 ships, or 5.7.1,
+  the version macOS 10.15 ships, as /bin/zsh. GitHub has no runners with
+  either macOS.
+
+inputs:
+  version:
+    description: 5.8 or 5.7.1
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - id: deb
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+      run: |
+        case $VERSION in
+        5.8) echo "version=5.8-6+deb11u1" >>"$GITHUB_OUTPUT" ;;
+        5.7.1) echo "version=5.7.1-1+deb10u1" >>"$GITHUB_OUTPUT" ;;
+        *) echo "::error::There's no zsh $VERSION package here, only 5.8 and 5.7.1"; exit 1 ;;
+        esac
+
+    # Debian keeps old releases on archive.debian.org, which is slow and
+    # sometimes down.
+    - id: cache
+      uses: actions/cache@v6
+      with:
+        path: ~/zsh-debs
+        key: zsh-debs-${{ steps.deb.outputs.version }}
+
+    - name: Download zsh ${{ inputs.version }}
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        DEB: ${{ steps.deb.outputs.version }}
+      run: |
+        mkdir -p ~/zsh-debs && cd ~/zsh-debs
+        base=https://archive.debian.org/debian/pool/main/z/zsh
+        curl -fsSLO "$base/zsh-common_${DEB}_all.deb"
+        curl -fsSLO "$base/zsh_${DEB}_amd64.deb"
+
+    - name: Install zsh ${{ inputs.version }}
+      shell: bash
+      run: |
+        cd ~/zsh-debs
+        sha256sum --ignore-missing -c - <<'EOF'
+        2466fcf973de97c6ba9d4459a06a1e0faab93a44e16fe72520bba76fc377f533  zsh-common_5.8-6+deb11u1_all.deb
+        0d42edeaeb806767bcfde72eb3c29aa34f5065db061e918a2b64ebb0a9821a80  zsh_5.8-6+deb11u1_amd64.deb
+        3f0a99094085e16e2f0d9c93f20f7cc93efb673518f51dcea37c392cff79ef02  zsh-common_5.7.1-1+deb10u1_all.deb
+        89cd7d28a5e86087c5a57f21af117e868c488d27e82dc1e905aa124aab242d61  zsh_5.7.1-1+deb10u1_amd64.deb
+        EOF
+        sudo dpkg -i ./*.deb
+        /bin/zsh --version
