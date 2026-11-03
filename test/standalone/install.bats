@@ -11,6 +11,7 @@ setup() {
     publish_riedl amd64 9.0.2
     publish_riedl arm64 9.0.2
     publish_evermeet 9.0.1
+    publish_plugin 0.1.1
 }
 
 teardown() {
@@ -38,7 +39,8 @@ teardown() {
     run -0 setup_script
     run -0 find "$BIN" -type f ! -perm -755
     assert_output ''
-    run -0 find "$TMPDIR" "$HOME" -mindepth 1
+    run -0 find "$TMPDIR" "$HOME" -mindepth 1 ! -path "$HOME/.config" ! -path "$HOME/.config/yt-dlp" \
+        ! -path "$HOME/.config/yt-dlp/plugins" ! -path "$PLUGIN_DIR" ! -path "$PLUGIN_DIR/*"
     assert_output ''
 }
 

@@ -75,7 +75,7 @@ What the script installed is recorded in `~/Library/Application Support/yt-dlp-s
 
 ## Without a package manager
 
-`setup-yt-dlp-standalone.zsh` downloads yt-dlp_macos, ffmpeg and ffprobe into `/usr/local/bin`, and updates them with `--update`. It needs macOS 10.15 or later.
+`setup-yt-dlp-standalone.zsh` downloads yt-dlp_macos, ffmpeg and ffprobe into `/usr/local/bin`, and the yt-dlp-apple-webkit-jsi plugin into yt-dlp's plugins folder. It updates them with `--update`. It needs macOS 10.15 or later.
 
 Download `setup-yt-dlp-standalone.tar.xz` from [Releases](https://github.com/Mahir007/yt-dlp_macos/releases), then, from the folder it's in:
 
@@ -89,11 +89,14 @@ yt-dlp is then the `yt-dlp_macos` command.
 | | From |
 | - | - |
 | yt-dlp_macos | [yt-dlp's releases](https://github.com/yt-dlp/yt-dlp/releases/latest) |
-| ffmpeg, ffprobe | [martin-riedl.de](https://ffmpeg.martin-riedl.de) on macOS 12 or later. On macOS 10.15 or 11, [evermeet.cx](https://evermeet.cx/ffmpeg/). Its builds are for Intel, so on Apple silicon they need Rosetta. Without it, the script installs yt-dlp_macos alone and says how to install Rosetta. |
+| ffmpeg, ffprobe | [martin-riedl.de](https://ffmpeg.martin-riedl.de) on macOS 12 or later. On macOS 10.15 or 11, [evermeet.cx](https://evermeet.cx/ffmpeg/). Its builds are for Intel, so on Apple silicon they need Rosetta. Without it, the script skips them and says how to install Rosetta. |
+| [yt-dlp-apple-webkit-jsi](https://github.com/grqz/yt-dlp-apple-webkit-jsi) | [Its releases](https://github.com/grqz/yt-dlp-apple-webkit-jsi/releases/latest), unzipped into `${XDG_CONFIG_HOME:-~/.config}/yt-dlp/plugins/yt-dlp-apple-webkit-jsi`. It solves YouTube's JavaScript challenges with macOS's WebKit, so yt-dlp doesn't need a JavaScript runtime. It needs macOS 11, so the script skips it on 10.15. |
 
-Downloads are checked against the SHA-256 their site publishes. evermeet.cx doesn't publish one. Each new binary is run once before it replaces the old one.
+Downloads are checked against the SHA-256 their site publishes. evermeet.cx and the plugin's releases don't publish a checksum file. Each new binary is run once before it replaces the old one.
 
-An ffmpeg or ffprobe the script didn't install, such as Homebrew's, is left alone. If the script can't write to `/usr/local/bin`, it asks for your password.
+An ffmpeg or ffprobe the script didn't install, such as Homebrew's, is left alone, and so is a symlink at the plugin's folder. If the script can't write to `/usr/local/bin`, it asks for your password.
+
+`--update` replaces the plugin's whole folder, so don't keep your own files in it.
 
 | Option | |
 | ------ | - |
@@ -108,7 +111,7 @@ An ffmpeg or ffprobe the script didn't install, such as Homebrew's, is left alon
 
 At the end of an install, it offers YouTube Downloader Pro, as `setup-yt-dlp.zsh` does. This version runs on macOS's own bash and uses `yt-dlp_macos`. Each time it starts, it runs `yt-dlp_macos -U`. That needs write access to `/usr/local/bin`; if it fails, run the script with `--update` instead.
 
-The script writes nothing outside `/usr/local/bin` except the YouTube Downloader Pro you choose to save. If something fails, it keeps a log in the temporary folder and shows its path.
+The script writes nothing outside `/usr/local/bin` and the plugin's folder, except the YouTube Downloader Pro you choose to save. If something fails, it keeps a log in the temporary folder and shows its path.
 
 ## Troubleshooting
 
