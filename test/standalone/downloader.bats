@@ -108,6 +108,7 @@ answer() {
 @test "an install on a terminal ends with the question, and yes saves it" {
     publish_ytdlp 2026.10.26
     publish_riedl amd64 9.0.2
+    publish_plugin 0.1.1
     stub osascript 'echo "$HOME/Downloads/Pro"'
     run -0 answer 'y\n' 'main --no-color'
     assert_output --partial 'Do you want to download the YouTube Downloader Pro script? [y/N] '

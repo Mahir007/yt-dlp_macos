@@ -6,9 +6,11 @@ setup() {
     standalone_setup
     publish_ytdlp 2026.10.20
     publish_riedl amd64 9.0.1
+    publish_plugin 0.1.0
     setup_script >/dev/null
     publish_ytdlp 2026.10.26
     publish_riedl amd64 9.0.2
+    publish_plugin 0.1.1
 }
 
 teardown() {

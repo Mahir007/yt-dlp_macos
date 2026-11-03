@@ -1,8 +1,9 @@
 #!/bin/zsh -f
 #
 # setup-yt-dlp-standalone: install yt-dlp_macos, ffmpeg and ffprobe into
-# /usr/local/bin without a package manager, update them with --update, and
-# save YouTube Downloader Pro.
+# /usr/local/bin and the yt-dlp-apple-webkit-jsi plugin into yt-dlp's plugins
+# folder, without a package manager, update them with --update, and save
+# YouTube Downloader Pro.
 #
 # Needs zsh 5.7.1 or later. macOS 10.15 Catalina ships 5.7.1 as /bin/zsh.
 #
@@ -54,11 +55,16 @@ fi
 typeset -gr BIN_DIR=${SETUP_YT_DLP_BIN_DIR:-/usr/local/bin}
 typeset -gra TOOLS=(yt-dlp_macos ffmpeg ffprobe)
 
-# yt-dlp_macos comes from yt-dlp's releases on GitHub. ffmpeg and ffprobe
-# come from martin-riedl.de, whose builds need macOS 12 or later, or on
+# The plugin goes where yt-dlp looks for plugins, in a folder of its own.
+typeset -gr PLUGIN=yt-dlp-apple-webkit-jsi
+typeset -gr PLUGIN_DIR=${XDG_CONFIG_HOME:-$HOME/.config}/yt-dlp/plugins/$PLUGIN
+
+# yt-dlp_macos and the plugin come from their releases on GitHub. ffmpeg and
+# ffprobe come from martin-riedl.de, whose builds need macOS 12 or later, or on
 # older Macs from evermeet.cx, whose builds need 10.13. evermeet.cx builds
 # only for Intel, so on Apple silicon with macOS 11 they run with Rosetta.
 typeset -gr YTDLP_URL=https://github.com/yt-dlp/yt-dlp/releases
+typeset -gr PLUGIN_URL=https://github.com/grqz/yt-dlp-apple-webkit-jsi/releases
 typeset -gr RIEDL_URL=https://ffmpeg.martin-riedl.de
 typeset -gr EVERMEET_URL=https://evermeet.cx/ffmpeg
 
@@ -442,23 +448,48 @@ binary_version() {
     REPLY=$line
 }
 
-# installed_version TOOL: set REPLY to the version of TOOL in BIN_DIR. Fails
-# with 1 if it isn't there, or with 2 if it isn't one this script installs,
-# such as Homebrew's ffmpeg linked into /usr/local/bin on an Intel Mac. A
-# yt-dlp_macos that doesn't run counts as not there, so it's installed
-# again.
+# plugin_version DIR: set REPLY to the version of the plugin in DIR, which
+# its code states. The releases have nothing else that says. Fails if it
+# doesn't say.
+plugin_version() {
+    local -a match mbegin mend
+    local MATCH MBEGIN MEND
+    local re=$'__version__ *= *[\'"]([^\'"]+)'
+    file_read $1/yt_dlp_plugins/extractor/webkit_jsi.py
+    if [[ $REPLY =~ $re ]]; then
+        REPLY=$match[1]
+    else
+        REPLY=''
+        return 1
+    fi
+}
+
+# installed_version TOOL: set REPLY to the version of TOOL in BIN_DIR, or of
+# the plugin in PLUGIN_DIR. Fails with 1 if it isn't there, or with 2 if it
+# isn't one this script installs, such as Homebrew's ffmpeg linked into
+# /usr/local/bin on an Intel Mac, or a link to a plugin's checkout. A
+# yt-dlp_macos that doesn't run, or a plugin that doesn't say its version,
+# counts as not there, so it's installed again.
 installed_version() {
     local file=$BIN_DIR/$1
     typeset -g REPLY=''
+    if [[ $1 == $PLUGIN ]]; then
+        [[ -e $PLUGIN_DIR || -L $PLUGIN_DIR ]] || return 1
+        [[ -d $PLUGIN_DIR && ! -L $PLUGIN_DIR ]] || return 2
+        plugin_version $PLUGIN_DIR
+        return
+    fi
     [[ -e $file || -L $file ]] || return 1
     [[ -f $file && ! -L $file ]] || return 2
     binary_version $file $1
 }
 
-# tool_source TOOL: print where TOOL comes from on this Mac: ytdlp, riedl or
-# evermeet.
+# tool_source TOOL: print where TOOL comes from on this Mac: plugin, ytdlp,
+# riedl or evermeet.
 tool_source() {
-    if [[ $1 == yt-dlp_macos ]]; then
+    if [[ $1 == $PLUGIN ]]; then
+        print plugin
+    elif [[ $1 == yt-dlp_macos ]]; then
         print ytdlp
     elif is-at-least 12 $mac_version; then
         print riedl
@@ -536,6 +567,15 @@ lookup_ytdlp() {
     found yt-dlp_macos $tag $YTDLP_URL/download/$tag/yt-dlp_macos $sha
 }
 
+lookup_plugin() {
+    local url tag
+    # https://github.com/grqz/yt-dlp-apple-webkit-jsi/releases/tag/v0.1.1
+    url=$(redirect_of $PLUGIN_URL/latest) || return 1
+    [[ $url == */tag/[^/]## ]] || return 1
+    tag=${url:t}
+    found $PLUGIN ${tag#v} $PLUGIN_URL/download/$tag/$PLUGIN.zip
+}
+
 lookup_riedl() {
     local url dir tool sums sha
     # https://ffmpeg.martin-riedl.de/download/macos/arm64/1789931890_9.0.2/ffmpeg.zip:
@@ -574,9 +614,9 @@ lookup_evermeet() {
 typeset -g work_dir=''
 typeset -gi use_sudo=0
 
-# install_tool TOOL: download the latest TOOL, check it, and move it into
-# BIN_DIR. Run as a step, so its output goes to the log.
-install_tool() {
+# download_tool TOOL: download the latest TOOL into a folder of its own, check
+# its SHA-256 if it has one, and set REPLY to the file.
+download_tool() {
     local tool=$1 url=$latest_url[$1] sha=$latest_sha[$1] got
     local dir=$work_dir/$tool
     local file=$dir/${url:t}
@@ -592,11 +632,47 @@ install_tool() {
         fi
         print -r -- "SHA-256 $got is right."
     fi
+    typeset -g REPLY=$file
+}
+
+# install_plugin: download the latest plugin, check it's a plugin, and replace
+# PLUGIN_DIR with it. Files the new version no longer has don't stay behind.
+# The old copy goes in the temporary folder, to be deleted with it.
+install_plugin() {
+    download_tool $PLUGIN || return 1
+    local file=$REPLY dir=${REPLY:h}
+    unzip -oq $file -d $dir/unzipped || return 1
+    if ! plugin_version $dir/unzipped; then
+        print -r -- "${file:t} doesn't have the plugin in it."
+        return 1
+    fi
+    zf_mkdir -p ${PLUGIN_DIR:h} || return 1
+    if [[ -e $PLUGIN_DIR ]]; then
+        mv -f $PLUGIN_DIR $dir/old || return 1
+    fi
+    if ! mv -f $dir/unzipped $PLUGIN_DIR; then
+        [[ -e $dir/old ]] && mv -f $dir/old $PLUGIN_DIR
+        return 1
+    fi
+}
+
+# install_tool TOOL: download the latest TOOL, check it, and move it into
+# place. Run as a step, so its output goes to the log.
+install_tool() {
+    local tool=$1 file dir
+    if [[ $tool == $PLUGIN ]]; then
+        install_plugin
+        return
+    fi
+    download_tool $tool || return 1
+    file=$REPLY
+    dir=${file:h}
     if [[ $file == *.zip ]]; then
         unzip -oq $file -d $dir/unzipped || return 1
+        local name=${file:t}
         file=$dir/unzipped/$tool
         if [[ ! -f $file ]]; then
-            print -r -- "${url:t} has no $tool in it."
+            print -r -- "$name has no $tool in it."
             return 1
         fi
     fi
@@ -624,6 +700,7 @@ install_tool() {
 #   update       installed, but not the latest
 #   foreign      not one the script installs, so left alone
 #   rosetta      the build is for Intel, and Rosetta isn't installed
+#   old_macos    the plugin needs a newer macOS
 #   unknown      the latest version couldn't be found
 typeset -gA plan=() had=()
 
@@ -645,6 +722,12 @@ plan_tool() {
     fi
     if needs_rosetta $tool; then
         plan[$tool]=rosetta
+        return 0
+    fi
+    # It uses WebKit APIs that macOS 10.15 doesn't have, and yt-dlp wouldn't
+    # use it there.
+    if [[ $tool == $PLUGIN ]] && ! is-at-least 11 $mac_version; then
+        plan[$tool]=old_macos
         return 0
     fi
     source=$(tool_source $tool)
@@ -680,6 +763,9 @@ apply_tool() {
         rosetta)
             ui_skip $tool "skipped: its build for this macOS needs Rosetta"
             ;;
+        old_macos)
+            ui_skip $tool "skipped: it needs macOS 11 or later"
+            ;;
         unknown)
             ui_fail $tool "couldn't find the latest version"
             problems+=("the latest $tool couldn't be found")
@@ -710,15 +796,19 @@ typeset -ga problems=()
 install_run() {
     local tool
     local -F start=$EPOCHREALTIME
+    # What goes into BIN_DIR, the only place that can need sudo.
+    local -a to_bin=()
     for tool in $TOOLS; do
         plan_tool $tool
+        [[ $plan[$tool] == (install|update) ]] && to_bin+=($tool)
     done
+    plan_tool $PLUGIN
 
     # (Inside (( )), the expansion would match against all of plan's
     # values joined into one string.)
     local -a downloads=( ${(M)${(v)plan}:#(install|update)} )
     if (( ! opts[dry_run] && $#downloads )); then
-        if needs_sudo; then
+        if (( $#to_bin )) && needs_sudo; then
             use_sudo=1
             print
             sudo_begin "Installing into $BIN_DIR needs administrator access."
@@ -731,6 +821,8 @@ install_run() {
     for tool in $TOOLS; do
         apply_tool $tool
     done
+    ui_section "$(ui_path "${PLUGIN_DIR:h}")"
+    apply_tool $PLUGIN
 
     local retry="Run the script again to retry."
     [[ $opts[action] == update ]] && retry="Run the script with --update again to retry."
@@ -924,8 +1016,8 @@ cli_usage() {
     print -r -- "\
 ${c[bold]}Usage:${c[reset]} $SETUP_PROG [options]
 
-Install yt-dlp_macos, ffmpeg and ffprobe into $BIN_DIR, without a
-package manager.
+Install yt-dlp_macos, ffmpeg and ffprobe into $BIN_DIR, and the
+$PLUGIN plugin for yt-dlp, without a package manager.
 
 ${c[bold]}Options:${c[reset]}
   -U, --update     Also update them to the latest versions

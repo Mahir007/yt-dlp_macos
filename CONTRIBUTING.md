@@ -2,7 +2,7 @@
 
 ## Layout
 
-- `src/` has the two setup scripts and the downloader scripts. `setup-yt-dlp-standalone.zsh` installs yt-dlp_macos, ffmpeg and ffprobe into `/usr/local/bin` without a package manager. `youtube-downloader-pro.command` is a template: the setup script downloads it from the release's tag (from `main` for version `0.0.0-dev`, and from the commit for a CI build) and fills in `@BASH@`, `@PREFIX@` and `@MANAGER@`. The standalone script saves `youtube-downloader-pro-standalone.command` as it is.
+- `src/` has the two setup scripts and the downloader scripts. `setup-yt-dlp-standalone.zsh` installs yt-dlp_macos, ffmpeg and ffprobe into `/usr/local/bin`, and the yt-dlp-apple-webkit-jsi plugin into yt-dlp's plugins folder, without a package manager. `youtube-downloader-pro.command` is a template: the setup script downloads it from the release's tag (from `main` for version `0.0.0-dev`, and from the commit for a CI build) and fills in `@BASH@`, `@PREFIX@` and `@MANAGER@`. The standalone script saves `youtube-downloader-pro-standalone.command` as it is.
 - `test/` has the bats tests, with those for the standalone script in `test/standalone/`. `test/bats` and `test/test_helper/bats-*` are git submodules, and `test/fakes/` has the fake `brew`, `port`, `python3`, `sudo` and `curl` they run against.
 - `.github/workflows/` has the CI and release workflows, and `.github/scripts/` the scripts that build a release's archives and notes.
 

@@ -21,6 +21,10 @@ standalone_setup() {
     ln -s "$FAKES/curl" "$STUBS/"
     export TMPDIR=$BATS_TEST_TMPDIR/tmp
     mkdir -p "$TMPDIR"
+    # The plugin's folder is under ~/.config unless a test says otherwise.
+    unset XDG_CONFIG_HOME
+    # shellcheck disable=SC2034  # used by the tests
+    PLUGIN_DIR=$HOME/.config/yt-dlp/plugins/yt-dlp-apple-webkit-jsi
 
     # An Intel Mac on macOS 12 unless a test says otherwise. On Intel,
     # sysctl doesn't know hw.optional.arm64.
@@ -110,6 +114,18 @@ publish_evermeet() {
         fake_ffmpeg "$BATS_TEST_TMPDIR/evermeet/$tool" $tool "$1-tessus"
         make_zip "$site/$tool-$1.zip" "$BATS_TEST_TMPDIR/evermeet/$tool"
     done
+}
+
+# publish_plugin VERSION: make VERSION the plugin's latest release, with the
+# file the script reads its version from and one named after the version.
+publish_plugin() {
+    local releases=$FAKE_WEB/github.com/grqz/yt-dlp-apple-webkit-jsi/releases
+    local dir=$releases/download/v$1 src=$BATS_TEST_TMPDIR/plugin-$1
+    mkdir -p "$dir" "$src/yt_dlp_plugins/extractor"
+    printf 'https://github.com/grqz/yt-dlp-apple-webkit-jsi/releases/tag/v%s' "$1" >"$releases/latest.redirect"
+    printf "import os\n\n__version__ = '%s'\n" "$1" >"$src/yt_dlp_plugins/extractor/webkit_jsi.py"
+    touch "$src/yt_dlp_plugins/extractor/from-$1.py"
+    (cd "$src" && "$PYTHON" -I -m zipfile -c "$dir/yt-dlp-apple-webkit-jsi.zip" yt_dlp_plugins)
 }
 
 # installed_as TOOL: print what TOOL in $BIN says its version is.
