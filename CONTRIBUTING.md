@@ -60,7 +60,7 @@ The release workflow runs CI with the tag's version, then publishes a release wi
 
 The notes list the commits since the previous tag for a pre-release, and since the previous final release for a final release, so they include its pre-releases. Breaking changes, features, fixes, performance and documentation get their own sections, with the text of a `BREAKING CHANGE:` footer. Other commits go in a collapsed section, and a reverted commit is left out with its revert.
 
-The download table lists the archives the release's `.sha256` files name, with the labels in `file_labels` at the top of `.github/scripts/release-notes.sh`, and links the README's quick start at the tag. A new kind of archive needs an entry there. A second `-m` on the tag adds a summary at the top of the notes:
+The download table has a row for each system, with a link to each archive the release's `.sha256` files name. `file_globs` at the top of `.github/scripts/release-notes.sh` gives each kind of archive its system and link text, so a new kind needs an entry there. The table is followed by a link to the README's quick start at the tag. A second `-m` on the tag adds a summary at the top of the notes:
 
 ```sh
 git tag -a v1.1.0 -m "v1.1.0" -m "A sentence or two about the release."

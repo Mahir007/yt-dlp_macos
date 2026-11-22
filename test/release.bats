@@ -138,10 +138,9 @@ Adds a thing.
 
 ## Download
 
-| File | For |
+| System | Download |
 | --- | --- |
-| [setup-yt-dlp.tar.xz](https://github.com/me/repo/releases/download/v1.1.0-beta.1/setup-yt-dlp.tar.xz) | macOS, with Homebrew or MacPorts |
-| [setup-yt-dlp-standalone.tar.xz](https://github.com/me/repo/releases/download/v1.1.0-beta.1/setup-yt-dlp-standalone.tar.xz) | macOS, without a package manager |
+| macOS | [With Homebrew or MacPorts](https://github.com/me/repo/releases/download/v1.1.0-beta.1/setup-yt-dlp.tar.xz) · [Without a package manager](https://github.com/me/repo/releases/download/v1.1.0-beta.1/setup-yt-dlp-standalone.tar.xz) |
 
 For how to install it, see [Quick start](https://github.com/me/repo/blob/v1.1.0-beta.1/README.md#quick-start) in the README.
 
@@ -167,14 +166,14 @@ For how to install it, see [Quick start](https://github.com/me/repo/blob/v1.1.0-
 <details>
 <summary>🔒 SHA-256</summary>
 
-```
-0123abcd  setup-yt-dlp.tar.xz
-4567ef01  setup-yt-dlp-standalone.tar.xz
-```
+Download the file's `.sha256` too, and run its line in the folder with both. It prints `OK` or `True` if the file is intact.
 
-To check your downloads, put them and their `.sha256` files in a folder of their own, and run the command for your system there. Delete older copies first, so your browser doesn't rename the new ones.
+macOS:
 
-- macOS: `shasum -a 256 -c *.sha256`
+```sh
+shasum -a 256 -c 'setup-yt-dlp.tar.xz.sha256'
+shasum -a 256 -c 'setup-yt-dlp-standalone.tar.xz.sha256'
+```
 
 </details>
 EOF
@@ -308,6 +307,16 @@ U1NIU0lH
     assert_line 'For how to install it, see [Download a release (easiest)](https://github.com/me/repo/blob/v1.0.0/README.md#download-a-release-easiest) in the README.'
     run -0 notes v1.1.0
     assert_line 'For how to install it, see the [README](https://github.com/me/repo/blob/v1.1.0/README.md).'
+}
+
+@test "a system with one file still shows its link text" {
+    new_repo
+    commit "feat: add a thing" src/a
+    git tag v1.0.0
+    printf '%s  setup-yt-dlp-standalone.tar.xz\n' 4567ef01 >"$BATS_TEST_TMPDIR/sums"
+
+    run -0 notes v1.0.0 "$BATS_TEST_TMPDIR/sums"
+    assert_line '| macOS | [Without a package manager](https://github.com/me/repo/releases/download/v1.0.0/setup-yt-dlp-standalone.tar.xz) |'
 }
 
 @test "the notes refuse a file they don't know" {

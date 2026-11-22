@@ -15,22 +15,27 @@ version=${tag#v}
 url=https://github.com/$repo
 nl=$'\n'
 
-# The files a release has: a glob for the name, what the file is for, and its
-# system, in the order of the download table.
+# The files a release has, in the order of the download table: a glob for the
+# name, its system, and its link text, or '' for the file's name.
 file_globs=(setup-yt-dlp.tar.xz setup-yt-dlp-standalone.tar.xz)
-file_labels=("macOS, with Homebrew or MacPorts" "macOS, without a package manager")
 file_systems=(macOS macOS)
+file_links=("With Homebrew or MacPorts" "Without a package manager")
+# Longer names for systems' rows in the download table, by system.
+row_systems=()
+row_names=()
 
-# The command that checks the downloads on each system, in the order they're
-# listed. The backticks and $ are Markdown and PowerShell.
+# How to check a file on each system: the heading, the code block's language,
+# and the command, with @FILE@ for the file's name. The $ are PowerShell's.
+check_systems=(Windows macOS Linux Android)
+check_headings=("Windows, in PowerShell" macOS Linux Android)
+check_langs=(powershell sh sh sh)
 # shellcheck disable=SC2016
 check_commands=(
-    'macOS: `shasum -a 256 -c *.sha256`'
-    'Linux: `sha256sum -c *.sha256`'
-    'Android: `sha256sum -c *.sha256`'
-    'Windows, in PowerShell: `Get-ChildItem *.sha256 | ForEach-Object { $hash, $file = (Get-Content $_.FullName) -split '"'"'\s+'"'"'; "${file}: $((Get-FileHash $file).Hash -eq $hash)" }`'
+    '$hash, $file = (Get-Content '"'"'@FILE@.sha256'"'"') -split '"'"'\s+'"'"'; (Get-FileHash $file).Hash -eq $hash'
+    "shasum -a 256 -c '@FILE@.sha256'"
+    "sha256sum -c '@FILE@.sha256'"
+    "sha256sum -c '@FILE@.sha256'"
 )
-check_systems=(macOS Linux Android Windows)
 
 # A pre-release lists the commits since the previous tag of any kind. A
 # final release skips the pre-releases before it, so it lists everything
@@ -108,13 +113,25 @@ install_heading() {
     done <<<"$1"
 }
 
+# in_list WORD ITEM...: succeed if WORD is one of the ITEMs.
+in_list() {
+    local word=$1 item
+    shift
+    for item in "$@"; do
+        if [[ $item == "$word" ]]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
 # anchor HEADING: print the id GitHub gives a heading.
 anchor() {
     printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed -e 's/[^a-z0-9_ -]//g' -e 's/ /-/g'
 }
 
 # The archives the .sha256 files name, in the order of file_globs.
-declare -a dl_names=() dl_labels=() dl_systems=() dl_lines=()
+declare -a dl_names=() dl_links=() dl_systems=()
 sorted=''
 for path in "${sums[@]+"${sums[@]}"}"; do
     while IFS= read -r line || [[ -n $line ]]; do
@@ -135,16 +152,15 @@ for path in "${sums[@]+"${sums[@]}"}"; do
             echo "error: $name matches none of the files in file_globs" >&2
             exit 1
         fi
-        sorted+="$(printf '%03d' "$found")"$'\t'"$name"$'\t'"$line"$'\n'
+        sorted+="$(printf '%03d' "$found")"$'\t'"$name"$'\n'
     done <"$path"
 done
-while IFS=$'\t' read -r order name line; do
+while IFS=$'\t' read -r order name; do
     [[ -n $order ]] || continue
     i=$((10#$order))
     dl_names+=("$name")
-    dl_labels+=("${file_labels[i]}")
+    dl_links+=("${file_links[i]}")
     dl_systems+=("${file_systems[i]}")
-    dl_lines+=("$line")
 done < <(printf '%s' "$sorted" | LC_ALL=C sort -t $'\t' -k1,1 -k2,2)
 
 # Each commit in the range, oldest first, split into its Conventional Commits
@@ -278,9 +294,26 @@ message=$(tag_message)
 
 download="## Download"
 if ((${#dl_names[@]})); then
-    download+="$nl$nl| File | For |$nl| --- | --- |"
-    for ((i = 0; i < ${#dl_names[@]}; i++)); do
-        download+="$nl| [${dl_names[i]}]($url/releases/download/$tag/${dl_names[i]}) | ${dl_labels[i]} |"
+    download+="$nl$nl| System | Download |$nl| --- | --- |"
+    declare -a systems=()
+    for system in "${dl_systems[@]}"; do
+        in_list "$system" "${systems[@]+"${systems[@]}"}" || systems+=("$system")
+    done
+    for system in "${systems[@]}"; do
+        name=$system
+        for ((r = 0; r < ${#row_systems[@]}; r++)); do
+            if [[ ${row_systems[r]} == "$system" ]]; then
+                name=${row_names[r]}
+            fi
+        done
+        links=''
+        for ((i = 0; i < ${#dl_names[@]}; i++)); do
+            if [[ ${dl_systems[i]} == "$system" ]]; then
+                text=${dl_links[i]:-${dl_names[i]}}
+                links+="${links:+ · }[$text]($url/releases/download/$tag/${dl_names[i]})"
+            fi
+        done
+        download+="$nl| $name | $links |"
     done
 fi
 readme_link=$url/blob/$tag/README.md
@@ -312,18 +345,20 @@ fi
 part "$changes"
 
 if ((${#dl_names[@]})); then
-    block="<details>$nl<summary>🔒 SHA-256</summary>$nl$nl\`\`\`"
-    for line in "${dl_lines[@]}"; do
-        block+="$nl$line"
-    done
-    block+="$nl\`\`\`$nl${nl}To check your downloads, put them and their \`.sha256\` files in a folder of their own, and run the command for your system there. Delete older copies first, so your browser doesn't rename the new ones.$nl"
-    for ((i = 0; i < ${#check_systems[@]}; i++)); do
-        for system in "${dl_systems[@]}"; do
-            if [[ $system == "${check_systems[i]}" ]]; then
-                block+="$nl- ${check_commands[i]}"
+    block="<details>$nl<summary>🔒 SHA-256</summary>$nl${nl}Download the file's \`.sha256\` too, and run its line in the folder with both. It prints \`OK\` or \`True\` if the file is intact."
+    for system in "${systems[@]}"; do
+        for ((c = 0; c < ${#check_systems[@]}; c++)); do
+            if [[ ${check_systems[c]} == "$system" ]]; then
                 break
             fi
         done
+        lines=''
+        for ((i = 0; i < ${#dl_names[@]}; i++)); do
+            if [[ ${dl_systems[i]} == "$system" ]]; then
+                lines+="$nl${check_commands[c]//@FILE@/${dl_names[i]}}"
+            fi
+        done
+        block+="$nl$nl${check_headings[c]}:$nl$nl\`\`\`${check_langs[c]}$lines$nl\`\`\`"
     done
     part "$block$nl$nl</details>"
 fi
