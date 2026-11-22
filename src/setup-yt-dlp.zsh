@@ -1121,13 +1121,13 @@ typeset -gr DOWNLOADER_NAME='YouTube Downloader Pro.command'
 typeset -g downloader_tmp=''
 
 # downloader_url: print where to download the template from: the release's
-# tag, the commit a CI build was made from, or main for the script in the
-# repository.
+# tag, which for a pre-release is its version without the +<commit>, the
+# commit a CI build was made from, or main for the script in the repository.
 downloader_url() {
-    local ref=v$SETUP_VERSION
+    local ref=v${SETUP_VERSION%%+*}
     if [[ $SETUP_VERSION == *-dev ]]; then
         ref=main
-    elif [[ $SETUP_VERSION == *+* ]]; then
+    elif [[ $SETUP_VERSION == *-dev+* ]]; then
         ref=${SETUP_VERSION#*+}
     fi
     print -r -- "https://raw.githubusercontent.com/$DOWNLOADER_REPO/$ref/$DOWNLOADER_PATH"

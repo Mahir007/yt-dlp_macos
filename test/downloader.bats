@@ -79,6 +79,10 @@ MANAGER=@MANAGER@'
     sed 's/^typeset -gr SETUP_VERSION=0\.0\.0-dev$/typeset -gr SETUP_VERSION=0.0.0-dev+1a2b3c4/' "$SCRIPT" >"$BATS_TEST_TMPDIR/ci.zsh"
     SCRIPT=$BATS_TEST_TMPDIR/ci.zsh run -0 in_script 'downloader_url'
     assert_output https://raw.githubusercontent.com/Mahir007/yt-dlp_macos/1a2b3c4/src/youtube-downloader-pro.command
+    # A pre-release's tag is its version without the commit.
+    sed 's/^typeset -gr SETUP_VERSION=0\.0\.0-dev$/typeset -gr SETUP_VERSION=1.2.3-beta.4+1a2b3c4/' "$SCRIPT" >"$BATS_TEST_TMPDIR/beta.zsh"
+    SCRIPT=$BATS_TEST_TMPDIR/beta.zsh run -0 in_script 'downloader_url'
+    assert_output https://raw.githubusercontent.com/Mahir007/yt-dlp_macos/v1.2.3-beta.4/src/youtube-downloader-pro.command
 }
 
 @test "Homebrew: the saved script has Homebrew's values" {
