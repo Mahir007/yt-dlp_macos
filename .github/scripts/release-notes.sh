@@ -1,8 +1,9 @@
 #!/bin/bash
-# release-notes.sh TAG REPO SHA256FILE...: print the release notes for TAG,
-# in Markdown: how to install it, the commits since the previous release
-# grouped by their Conventional Commits type, and the archives' checksums.
-# REPO is owner/name.
+# release-notes.sh TAG REPO SHA256FILE...: print the release notes for TAG, in
+# Markdown: the tag's summary, a download table, the commits since the
+# previous release grouped by their Conventional Commits type, and the
+# checksums. REPO is owner/name, and the SHA256FILEs are the release's .sha256
+# files, which name its archives.
 #
 # The tests run this with macOS's /bin/bash, 3.2, so it keeps to bash 3.2.
 set -euo pipefail
@@ -12,6 +13,24 @@ repo=$2
 sums=("${@:3}")
 version=${tag#v}
 url=https://github.com/$repo
+nl=$'\n'
+
+# The files a release has: a glob for the name, what the file is for, and its
+# system, in the order of the download table.
+file_globs=(setup-yt-dlp.tar.xz setup-yt-dlp-standalone.tar.xz)
+file_labels=("macOS, with Homebrew or MacPorts" "macOS, without a package manager")
+file_systems=(macOS macOS)
+
+# The command that checks the downloads on each system, in the order they're
+# listed. The backticks and $ are Markdown and PowerShell.
+# shellcheck disable=SC2016
+check_commands=(
+    'macOS: `shasum -a 256 -c *.sha256`'
+    'Linux: `sha256sum -c *.sha256`'
+    'Android: `sha256sum -c *.sha256`'
+    'Windows, in PowerShell: `Get-ChildItem *.sha256 | ForEach-Object { $hash, $file = (Get-Content $_.FullName) -split '"'"'\s+'"'"'; "${file}: $((Get-FileHash $file).Hash -eq $hash)" }`'
+)
+check_systems=(macOS Linux Android Windows)
 
 # A pre-release lists the commits since the previous tag of any kind. A
 # final release skips the pre-releases before it, so it lists everything
@@ -25,6 +44,8 @@ subject_re='^([a-zA-Z]+)(\(([^)]+)\))?(!)?: (.+)$'
 breaking_re='^BREAKING[ -]CHANGE: (.*)$'
 footer_re='^[A-Za-z-]+(: | #)'
 plain_word_re="^[a-z]+('[a-z]+)?([[:space:]]|$)"
+heading_re='^#{2,3} +(.+)$'
+install_re='quick ?start|install|download'
 # git revert names the reverted commit in the body and quotes its subject in
 # the revert's subject, which may be reworded to revert: <subject>.
 reverts_re='This reverts commit ([0-9a-f]{7,40})'
@@ -60,6 +81,71 @@ footer() {
     read -r -a words <<<"$text" || true
     printf '%s' "${words[*]+"${words[*]}"}"
 }
+
+# tag_message: print the tag's message without its first line and its
+# signature, if it's an annotated tag. For a lightweight tag, for-each-ref
+# would give the tagged commit's message.
+tag_message() {
+    [[ $(git for-each-ref --format='%(objecttype)' "refs/tags/$tag") == tag ]] || return 0
+    git for-each-ref --format='%(contents)' "refs/tags/$tag" | sed -e 1d -e '/^-----BEGIN /,$d' | sed '/./,$!d'
+}
+
+# install_heading README: print the first ## or ### heading about a quick
+# start, installing or downloading.
+install_heading() {
+    local line text fenced=0
+    while IFS= read -r line; do
+        line=${line%$'\r'}
+        if [[ $line == '```'* ]]; then
+            fenced=$((1 - fenced))
+        elif ((!fenced)) && [[ $line =~ $heading_re ]]; then
+            text=$(printf '%s' "${BASH_REMATCH[1]}" | sed 's/[ #]*$//')
+            if [[ $(printf '%s' "$text" | tr '[:upper:]' '[:lower:]') =~ $install_re ]]; then
+                printf '%s' "$text"
+                return
+            fi
+        fi
+    done <<<"$1"
+}
+
+# anchor HEADING: print the id GitHub gives a heading.
+anchor() {
+    printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed -e 's/[^a-z0-9_ -]//g' -e 's/ /-/g'
+}
+
+# The archives the .sha256 files name, in the order of file_globs.
+declare -a dl_names=() dl_labels=() dl_systems=() dl_lines=()
+sorted=''
+for path in "${sums[@]+"${sums[@]}"}"; do
+    while IFS= read -r line || [[ -n $line ]]; do
+        line=${line%$'\r'}
+        [[ -n ${line//[[:space:]]/} ]] || continue
+        name=${line#*[[:space:]]}
+        name=${name#"${name%%[! ]*}"}
+        name=${name#\*}
+        found=-1
+        for ((i = 0; i < ${#file_globs[@]}; i++)); do
+            # shellcheck disable=SC2053 # the glob is a pattern
+            if [[ $name == ${file_globs[i]} ]]; then
+                found=$i
+                break
+            fi
+        done
+        if ((found < 0)); then
+            echo "error: $name matches none of the files in file_globs" >&2
+            exit 1
+        fi
+        sorted+="$(printf '%03d' "$found")"$'\t'"$name"$'\t'"$line"$'\n'
+    done <"$path"
+done
+while IFS=$'\t' read -r order name line; do
+    [[ -n $order ]] || continue
+    i=$((10#$order))
+    dl_names+=("$name")
+    dl_labels+=("${file_labels[i]}")
+    dl_systems+=("${file_systems[i]}")
+    dl_lines+=("$line")
+done < <(printf '%s' "$sorted" | LC_ALL=C sort -t $'\t' -k1,1 -k2,2)
 
 # Each commit in the range, oldest first, split into its Conventional Commits
 # parts. A subject that doesn't follow them has no type.
@@ -167,46 +253,44 @@ for ((i = 0; i < count; i++)); do
     esac
 done
 
-# section TITLE LINE...: print a group of commits, if it has any.
+# part TEXT: print a part of the notes, after a blank line if one came before.
+started=0
+part() {
+    ((!started)) || printf '\n'
+    started=1
+    printf '%s\n' "$1"
+}
+
+# section TITLE LINE...: add a group of commits to the changes, if it has any.
+changes="## What's changed"
 section() {
     local title=$1
     shift
     (($#)) || return 0
-    printf '\n### %s\n\n' "$title"
-    printf '%s\n' "$@"
+    changes+="$nl$nl### $title$nl$nl$(printf '%s\n' "$@")"
 }
 
 if [[ $version == *-* ]]; then
-    cat <<EOF
-> [!WARNING]
-> This is a pre-release, for trying things out before ${version%%-*} is final.
-
-EOF
+    part "> [!WARNING]$nl> This is a pre-release, for trying things out before ${version%%-*} is final. Please report problems in [Issues]($url/issues)."
 fi
+message=$(tag_message)
+[[ -z $message ]] || part "$message"
 
-cat <<EOF
-Installs [yt-dlp](https://github.com/yt-dlp/yt-dlp) and the tools it uses on macOS.
-
-## Install
-
-With Homebrew or MacPorts, on macOS 12 or later:
-
-\`\`\`sh
-curl -fsSLO $url/releases/download/$tag/setup-yt-dlp.tar.xz
-tar -xf setup-yt-dlp.tar.xz
-./setup-yt-dlp.zsh
-\`\`\`
-
-Without a package manager, on macOS 10.15 or later, into \`/usr/local/bin\`:
-
-\`\`\`sh
-curl -fsSLO $url/releases/download/$tag/setup-yt-dlp-standalone.tar.xz
-tar -xf setup-yt-dlp-standalone.tar.xz
-./setup-yt-dlp-standalone.zsh
-\`\`\`
-
-## What's changed
-EOF
+download="## Download"
+if ((${#dl_names[@]})); then
+    download+="$nl$nl| File | For |$nl| --- | --- |"
+    for ((i = 0; i < ${#dl_names[@]}; i++)); do
+        download+="$nl| [${dl_names[i]}]($url/releases/download/$tag/${dl_names[i]}) | ${dl_labels[i]} |"
+    done
+fi
+readme_link=$url/blob/$tag/README.md
+heading=$(install_heading "$(git show "$tag:README.md" 2>/dev/null || true)")
+if [[ -n $heading ]]; then
+    download+="$nl${nl}For how to install it, see [$heading]($readme_link#$(anchor "$heading")) in the README."
+else
+    download+="$nl${nl}For how to install it, see the [README]($readme_link)."
+fi
+part "$download"
 
 section "⚠️ Breaking changes" "${breaks[@]+"${breaks[@]}"}"
 section "✨ Features" "${new[@]+"${new[@]}"}"
@@ -215,30 +299,31 @@ section "⚡ Performance" "${performance[@]+"${performance[@]}"}"
 section "📖 Documentation" "${docs[@]+"${docs[@]}"}"
 # A commit that doesn't follow Conventional Commits may still change the scripts.
 if ((${#breaks[@]} + ${#new[@]} + ${#fixes[@]} + ${#performance[@]} + ${#docs[@]} == 0 && !untyped)); then
-    printf '\nNo user-facing changes.\n'
+    changes+="$nl${nl}No user-facing changes."
 fi
 if ((${#other[@]})); then
-    printf '\n<details>\n<summary>🧰 Other changes (%d)</summary>\n\n' "${#other[@]}"
-    printf '%s\n' "${other[@]}"
-    printf '\n</details>\n'
+    changes+="$nl$nl<details>$nl<summary>🧰 Other changes (${#other[@]})</summary>$nl$nl$(printf '%s\n' "${other[@]}")$nl$nl</details>"
 fi
-
 if [[ -n $previous ]]; then
-    printf '\n**Full changelog:** [%s...%s](%s/compare/%s...%s)\n' "$previous" "$tag" "$url" "$previous" "$tag"
+    changes+="$nl$nl**Full changelog:** [$previous...$tag]($url/compare/$previous...$tag)"
 else
-    printf '\n**Full changelog:** [all commits](%s/commits/%s)\n' "$url" "$tag"
+    changes+="$nl$nl**Full changelog:** [all commits]($url/commits/$tag)"
 fi
+part "$changes"
 
-cat <<EOF
-
-<details>
-<summary>🔒 SHA-256</summary>
-
-\`\`\`
-$(cat "${sums[@]}")
-\`\`\`
-
-Check one with \`shasum -a 256 -c setup-yt-dlp.tar.xz.sha256\`, or with \`setup-yt-dlp-standalone.tar.xz.sha256\`.
-
-</details>
-EOF
+if ((${#dl_names[@]})); then
+    block="<details>$nl<summary>🔒 SHA-256</summary>$nl$nl\`\`\`"
+    for line in "${dl_lines[@]}"; do
+        block+="$nl$line"
+    done
+    block+="$nl\`\`\`$nl${nl}To check your downloads, put them and their \`.sha256\` files in a folder of their own, and run the command for your system there. Delete older copies first, so your browser doesn't rename the new ones.$nl"
+    for ((i = 0; i < ${#check_systems[@]}; i++)); do
+        for system in "${dl_systems[@]}"; do
+            if [[ $system == "${check_systems[i]}" ]]; then
+                block+="$nl- ${check_commands[i]}"
+                break
+            fi
+        done
+    done
+    part "$block$nl$nl</details>"
+fi

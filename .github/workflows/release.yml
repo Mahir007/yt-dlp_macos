@@ -44,14 +44,17 @@ jobs:
         with:
           # The notes list the commits since the previous release's tag.
           fetch-depth: 0
+      # actions/checkout replaces the pushed annotated tag with a lightweight
+      # one, which loses the summary in the tag's message.
+      - name: Fetch tags
+        run: git fetch --force --tags origin
       - uses: actions/download-artifact@v8
         with:
           name: release
           path: dist
       - name: Write the release notes
         run: |
-          .github/scripts/release-notes.sh "$GITHUB_REF_NAME" "$GITHUB_REPOSITORY" \
-            dist/setup-yt-dlp.tar.xz.sha256 dist/setup-yt-dlp-standalone.tar.xz.sha256 \
+          .github/scripts/release-notes.sh "$GITHUB_REF_NAME" "$GITHUB_REPOSITORY" dist/*.sha256 \
             >"$RUNNER_TEMP/notes.md"
           cat "$RUNNER_TEMP/notes.md" >>"$GITHUB_STEP_SUMMARY"
       # Attestations need a public repository on GitHub's free plans.

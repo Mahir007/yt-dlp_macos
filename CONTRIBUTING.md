@@ -50,7 +50,7 @@ The type decides the next version: a breaking change bumps the major, `feat` the
 Push a tag for the version:
 
 ```sh
-git tag -a v1.0.0-beta.2 -m "setup-yt-dlp 1.0.0-beta.2"
+git tag -a v1.0.0-beta.2 -m "v1.0.0-beta.2"
 git push origin v1.0.0-beta.2
 ```
 
@@ -59,3 +59,15 @@ The scripts in the repository say their version is `0.0.0-dev`. CI builds `setup
 The release workflow runs CI with the tag's version, then publishes a release with CI's archives, their checksums and an attestation of where they were built. A tag with a hyphen, such as `v1.0.0-beta.2`, becomes a pre-release.
 
 The notes list the commits since the previous tag for a pre-release, and since the previous final release for a final release, so they include its pre-releases. Breaking changes, features, fixes, performance and documentation get their own sections, with the text of a `BREAKING CHANGE:` footer. Other commits go in a collapsed section, and a reverted commit is left out with its revert.
+
+The download table lists the archives the release's `.sha256` files name, with the labels in `file_labels` at the top of `.github/scripts/release-notes.sh`, and links the README's quick start at the tag. A new kind of archive needs an entry there. A second `-m` on the tag adds a summary at the top of the notes:
+
+```sh
+git tag -a v1.1.0 -m "v1.1.0" -m "A sentence or two about the release."
+```
+
+To preview the notes for a tag, with its `.sha256` files:
+
+```sh
+.github/scripts/release-notes.sh v1.0.0 Mahir007/yt-dlp_macos dist/*.sha256
+```
