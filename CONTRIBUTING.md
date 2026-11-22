@@ -33,6 +33,18 @@ sudo dpkg -i zsh-common_5.8-6+deb11u1_all.deb zsh_5.8-6+deb11u1_amd64.deb
 sudo apt-mark hold zsh zsh-common
 ```
 
+## Commits
+
+Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/):
+
+```
+<type>[optional scope][!]: <description>
+```
+
+The release notes are written from them, so the type says who a change is for. `feat` and `fix` are changes users of the scripts see, and `perf` and `docs` are listed in the notes too. Use `docs(contributing)` for this file, and `test`, `ci`, `build`, `refactor`, `style` or `chore` for everything else, even when it adds or fixes something. Mark a breaking change with `!` and a `BREAKING CHANGE:` footer that says what users have to do differently. A revert keeps the `This reverts commit <hash>.` line that `git revert` writes.
+
+The type decides the next version: a breaking change bumps the major, `feat` the minor, and anything else the patch.
+
 ## Releasing
 
 Push a tag for the version:
