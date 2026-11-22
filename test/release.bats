@@ -94,17 +94,24 @@ commit() {
     done
 }
 
-@test "the notes group the commits since the last release" {
+# The link after each commit in the notes, as a regular expression. The
+# backticks are part of the Markdown.
+# shellcheck disable=SC2016
+link='\(\[`[0-9a-f]{7}`\]\(https://github\.com/me/repo/commit/[0-9a-f]{40}\)\)'
+
+@test "the notes group the commits since the last release by type" {
     git init -q "$BATS_TEST_TMPDIR/repo"
     cd "$BATS_TEST_TMPDIR/repo"
-    commit "Add the first thing" src/a
+    commit "feat: add the first thing" src/a
     git tag v0.1.0
-    commit "Add a second thing" src/a
-    commit "Fix the first thing" src/a
-    commit "Tidy the wording" src/b
-    commit "Rename a thing" src/c
+    commit "feat: add a second thing" src/a
+    commit "fix(setup): mend the first thing" src/a
+    commit "perf: start faster" src/a
+    commit "docs: explain a thing" README.md
+    commit "docs(contributing): explain the tests" CONTRIBUTING.md
+    commit "refactor: rename a thing" src/c
     git revert --no-edit HEAD >/dev/null
-    commit "Test the second thing" test/a.bats
+    commit "test: test the second thing" test/a.bats
     git tag v0.2.0-beta.1
     printf '%s  setup-yt-dlp.tar.xz\n' 0123abcd >"$BATS_TEST_TMPDIR/sums"
     printf '%s  setup-yt-dlp-standalone.tar.xz\n' 4567ef01 >"$BATS_TEST_TMPDIR/standalone-sums"
@@ -116,33 +123,81 @@ commit() {
     assert_line './setup-yt-dlp.zsh'
     assert_line 'curl -fsSLO https://github.com/me/repo/releases/download/v0.2.0-beta.1/setup-yt-dlp-standalone.tar.xz'
     assert_line './setup-yt-dlp-standalone.zsh'
-    assert_output --regexp '### ✨ New
+    assert_output --regexp "### ✨ Features
 
-- Add a second thing \([0-9a-f]+\)
+- Add a second thing $link
 
 ### 🐛 Fixes
 
-- Fix the first thing \([0-9a-f]+\)
+- \*\*setup:\*\* Mend the first thing $link
 
-### 🔧 Changes
+### ⚡ Performance
 
-- Tidy the wording \([0-9a-f]+\)
+- Start faster $link
+
+### 📖 Documentation
+
+- Explain a thing $link
 
 <details>
-<summary>🧰 Tests, CI and other development \(1\)</summary>
+<summary>🧰 Other changes \(2\)</summary>
 
-- Test the second thing \([0-9a-f]+\)'
-    refute_output --partial 'Add the first thing'
-    refute_output --partial 'Rename a thing'
+- docs\(contributing\): explain the tests $link
+- test: test the second thing $link
+"
+    refute_output --partial 'add the first thing'
+    refute_output --partial 'rename a thing'
+    refute_output --partial 'No user-facing changes'
     assert_line '**Full changelog:** [v0.1.0...v0.2.0-beta.1](https://github.com/me/repo/compare/v0.1.0...v0.2.0-beta.1)'
     assert_line '0123abcd  setup-yt-dlp.tar.xz'
     assert_line '4567ef01  setup-yt-dlp-standalone.tar.xz'
 }
 
+@test "the notes list a breaking change once, with its footer" {
+    git init -q "$BATS_TEST_TMPDIR/repo"
+    cd "$BATS_TEST_TMPDIR/repo"
+    commit "feat(setup)!: drop --output
+
+Why.
+
+BREAKING CHANGE: Pass the folder
+after --downloader instead.
+Co-Authored-By: Someone <a@b.c>" src/a
+    commit "fix!: keep the log" src/a
+    git tag v1.0.0
+    : >"$BATS_TEST_TMPDIR/sums"
+
+    run -0 "$ROOT/.github/scripts/release-notes.sh" v1.0.0 me/repo "$BATS_TEST_TMPDIR/sums"
+    assert_output --regexp "### ⚠️ Breaking changes
+
+- \*\*setup:\*\* Drop --output\. Pass the folder after --downloader instead\. $link
+- Keep the log $link
+"
+    refute_output --partial '### ✨ Features'
+    refute_output --partial '### 🐛 Fixes'
+}
+
+@test "the notes say when nothing users see has changed" {
+    git init -q "$BATS_TEST_TMPDIR/repo"
+    cd "$BATS_TEST_TMPDIR/repo"
+    commit "ci: run the tests" .github/workflows/ci.yml
+    git tag v1.0.0
+    commit "Tidy the scripts" src/a
+    git tag v1.0.1
+    : >"$BATS_TEST_TMPDIR/sums"
+
+    run -0 "$ROOT/.github/scripts/release-notes.sh" v1.0.0 me/repo "$BATS_TEST_TMPDIR/sums"
+    assert_line 'No user-facing changes.'
+    # A commit without a type may still change the scripts.
+    run -0 "$ROOT/.github/scripts/release-notes.sh" v1.0.1 me/repo "$BATS_TEST_TMPDIR/sums"
+    refute_output --partial 'No user-facing changes'
+    assert_line --regexp "^- Tidy the scripts $link\$"
+}
+
 @test "the notes for a final release have no pre-release warning" {
     git init -q "$BATS_TEST_TMPDIR/repo"
     cd "$BATS_TEST_TMPDIR/repo"
-    commit "Add the first thing" src/a
+    commit "feat: add the first thing" src/a
     git tag v1.0.0
     : >"$BATS_TEST_TMPDIR/sums"
     run -0 "$ROOT/.github/scripts/release-notes.sh" v1.0.0 me/repo "$BATS_TEST_TMPDIR/sums"
@@ -153,25 +208,25 @@ commit() {
 @test "the notes for a final release list everything since the last final release" {
     git init -q "$BATS_TEST_TMPDIR/repo"
     cd "$BATS_TEST_TMPDIR/repo"
-    commit "Add the first thing" src/a
+    commit "feat: add the first thing" src/a
     git tag v1.0.0-beta.1
-    commit "Add a second thing" src/a
+    commit "feat: add a second thing" src/a
     git tag v1.0.0
-    commit "Add a third thing" src/a
+    commit "feat: add a third thing" src/a
     git tag v1.1.0-beta.1
-    commit "Add a fourth thing" src/a
+    commit "feat: add a fourth thing" src/a
     git tag v1.1.0
     : >"$BATS_TEST_TMPDIR/sums"
 
     run -0 "$ROOT/.github/scripts/release-notes.sh" v1.0.0 me/repo "$BATS_TEST_TMPDIR/sums"
-    assert_line --regexp '^- Add the first thing \([0-9a-f]+\)$'
-    assert_line --regexp '^- Add a second thing \([0-9a-f]+\)$'
+    assert_output --regexp "- Add the first thing $link
+- Add a second thing $link"
     assert_line '**Full changelog:** [all commits](https://github.com/me/repo/commits/v1.0.0)'
 
     run -0 "$ROOT/.github/scripts/release-notes.sh" v1.1.0 me/repo "$BATS_TEST_TMPDIR/sums"
     refute_output --partial 'Add a second thing'
-    assert_line --regexp '^- Add a third thing \([0-9a-f]+\)$'
-    assert_line --regexp '^- Add a fourth thing \([0-9a-f]+\)$'
+    assert_output --regexp "- Add a third thing $link
+- Add a fourth thing $link"
     assert_line '**Full changelog:** [v1.0.0...v1.1.0](https://github.com/me/repo/compare/v1.0.0...v1.1.0)'
 
     # A pre-release still lists only what's new since the tag before it.

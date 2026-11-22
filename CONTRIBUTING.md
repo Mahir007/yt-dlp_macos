@@ -46,4 +46,4 @@ The scripts in the repository say their version is `0.0.0-dev`. CI builds `setup
 
 The release workflow runs CI with the tag's version, then publishes a release with CI's archives, their checksums and an attestation of where they were built. A tag with a hyphen, such as `v1.0.0-beta.2`, becomes a pre-release.
 
-The notes list the commits since the previous `v` tag. A subject starting with Add or Install goes under New, one starting with Fix under Fixes, and the rest under Changes. Commits that only touch tests, CI or this file go in a collapsed section, and a commit that was reverted is left out along with its revert.
+The notes list the commits since the previous tag for a pre-release, and since the previous final release for a final release, so they include its pre-releases. Breaking changes, features, fixes, performance and documentation get their own sections, with the text of a `BREAKING CHANGE:` footer. Other commits go in a collapsed section, and a reverted commit is left out with its revert.
