@@ -164,6 +164,7 @@ BREAKING CHANGE: Pass the folder
 after --downloader instead.
 Co-Authored-By: Someone <a@b.c>" src/a
     commit "fix!: keep the log" src/a
+    commit "fix: don't print an error" src/a
     git tag v1.0.0
     : >"$BATS_TEST_TMPDIR/sums"
 
@@ -173,8 +174,8 @@ Co-Authored-By: Someone <a@b.c>" src/a
 - \*\*setup:\*\* Drop --output\. Pass the folder after --downloader instead\. $link
 - Keep the log $link
 "
+    assert_line --regexp "^- Don't print an error $link\$"
     refute_output --partial '### ✨ Features'
-    refute_output --partial '### 🐛 Fixes'
 }
 
 @test "the notes say when nothing users see has changed" {

@@ -24,6 +24,7 @@ range=${previous:+$previous..}$tag
 subject_re='^([a-zA-Z]+)(\(([^)]+)\))?(!)?: (.+)$'
 breaking_re='^BREAKING[ -]CHANGE: (.*)$'
 footer_re='^[A-Za-z-]+(: | #)'
+plain_word_re="^[a-z]+('[a-z]+)?([[:space:]]|$)"
 # git revert names the reverted commit in the body and quotes its subject in
 # the revert's subject, which may be reworded to revert: <subject>.
 reverts_re='This reverts commit ([0-9a-f]{7,40})'
@@ -32,7 +33,7 @@ revert_subject_re='^Revert "(.+)"$'
 # sentence TEXT: print TEXT with its first word capitalised, if that is a
 # plain word, which a file name isn't.
 sentence() {
-    if [[ $1 =~ ^[a-z]+([[:space:]]|$) ]]; then
+    if [[ $1 =~ $plain_word_re ]]; then
         printf '%s%s' "$(printf '%s' "${1:0:1}" | tr '[:lower:]' '[:upper:]')" "${1:1}"
     else
         printf '%s' "$1"
