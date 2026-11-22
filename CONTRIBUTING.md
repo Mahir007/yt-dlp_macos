@@ -56,7 +56,7 @@ git push origin v1.0.0-beta.2
 
 The scripts in the repository say their version is `0.0.0-dev`. CI builds `setup-yt-dlp.tar.xz` and `setup-yt-dlp-standalone.tar.xz` on every push, with a version in the copies of the scripts in them, and checks that macOS's tar extracts them and the scripts start. On a branch the version is `0.0.0-dev+<commit>`, and the archives are kept for a day as the run's `release` artifact.
 
-The release workflow runs CI with the tag's version, then publishes a release with CI's archives, their checksums and an attestation of where they were built. A tag with a hyphen, such as `v1.0.0-beta.2`, becomes a pre-release.
+The release workflow runs CI with the tag's version, then publishes a release with CI's archives, their checksums and an attestation of where they were built. A tag with a hyphen, such as `v1.0.0-beta.2`, becomes a pre-release. Pre-releases are `-alpha.N`, `-beta.N` or `-rc.N`, counting from 1, and the copies of the scripts in their archives have the commit too, such as `1.0.0-beta.2+1a2b3c4`.
 
 The notes list the commits since the previous tag for a pre-release, and since the previous final release for a final release, so they include its pre-releases. Breaking changes, features, fixes, performance and documentation get their own sections, with the text of a `BREAKING CHANGE:` footer. Other commits go in a collapsed section, and a reverted commit is left out with its revert.
 

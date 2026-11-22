@@ -32,7 +32,7 @@ commit() {
 
 @test "the archive holds the script and the license, with no folder" {
     needs_gnu_tar
-    run -0 package 1.2.3-beta.4
+    run -0 package 1.2.3-beta.4+1a2b3c4
     run -0 tar -tvJf "$BATS_TEST_TMPDIR/dist/setup-yt-dlp.tar.xz"
     assert_line --regexp "^-rw-r--r-- 0/0 .* LICENSE$"
     assert_line --regexp "^-rwxr-xr-x 0/0 .* setup-yt-dlp\.zsh$"
@@ -43,28 +43,28 @@ commit() {
 
 @test "the packaged script has the version" {
     needs_gnu_tar
-    run -0 package 1.2.3-beta.4
+    run -0 package 1.2.3-beta.4+1a2b3c4
     tar -xJf "$BATS_TEST_TMPDIR/dist/setup-yt-dlp.tar.xz" -C "$BATS_TEST_TMPDIR"
     run -0 "$ZSH_BIN" "$BATS_TEST_TMPDIR/setup-yt-dlp.zsh" --version
-    assert_output 'setup-yt-dlp 1.2.3-beta.4'
+    assert_output 'setup-yt-dlp 1.2.3-beta.4+1a2b3c4'
     # The version is all that differs from the script in the repository.
     run -1 diff "$ROOT/src/setup-yt-dlp.zsh" "$BATS_TEST_TMPDIR/setup-yt-dlp.zsh"
     assert_output --regexp '^[0-9]+c[0-9]+
 < typeset -gr SETUP_VERSION=0.0.0-dev
 ---
-> typeset -gr SETUP_VERSION=1\.2\.3-beta\.4$'
+> typeset -gr SETUP_VERSION=1\.2\.3-beta\.4\+1a2b3c4$'
 }
 
 @test "the standalone archive holds its script, with the version, and the license" {
     needs_gnu_tar
-    run -0 package 1.2.3-beta.4
+    run -0 package 1.2.3-beta.4+1a2b3c4
     run -0 tar -tvJf "$BATS_TEST_TMPDIR/dist/setup-yt-dlp-standalone.tar.xz"
     assert_line --regexp "^-rw-r--r-- 0/0 .* LICENSE$"
     assert_line --regexp "^-rwxr-xr-x 0/0 .* setup-yt-dlp-standalone\.zsh$"
     assert_equal "${#lines[@]}" 2
     tar -xJf "$BATS_TEST_TMPDIR/dist/setup-yt-dlp-standalone.tar.xz" -C "$BATS_TEST_TMPDIR"
     run -0 "$ZSH_BIN" "$BATS_TEST_TMPDIR/setup-yt-dlp-standalone.zsh" --version
-    assert_output 'setup-yt-dlp-standalone 1.2.3-beta.4'
+    assert_output 'setup-yt-dlp-standalone 1.2.3-beta.4+1a2b3c4'
     cd "$BATS_TEST_TMPDIR/dist"
     run -0 sha256sum -c setup-yt-dlp-standalone.tar.xz.sha256
 }
@@ -88,9 +88,10 @@ commit() {
 
 @test "a version that isn't one is refused" {
     local version
-    for version in v1.2.3 1.2 next 1.2.3/x; do
+    # A pre-release needs its commit, and only alpha, beta and rc count from 1.
+    for version in v1.2.3 1.2 next 1.2.3/x 1.2.3-beta.4 1.2.3-test.1+1a2b3c4 1.2.3-beta.0+1a2b3c4 0.0.0-dev; do
         run -1 --separate-stderr package "$version"
-        assert_stderr "error: $version isn't a version, such as 1.0.0, 1.0.0-beta.1 or 0.0.0-dev+1a2b3c4"
+        assert_stderr "error: $version isn't a version, such as 1.0.0, 1.0.0-beta.1+1a2b3c4 or 0.0.0-dev+1a2b3c4"
     done
 }
 

@@ -1,6 +1,6 @@
 #!/bin/bash
-# package.sh VERSION [DIR]: build the archives for VERSION, such as 1.0.0 or
-# 0.0.0-dev+1a2b3c4, in DIR (default dist): setup-yt-dlp.tar.xz and
+# package.sh VERSION [DIR]: build the archives for VERSION, such as 1.0.0,
+# 1.0.0-beta.1+1a2b3c4 or 0.0.0-dev+1a2b3c4, in DIR (default dist): setup-yt-dlp.tar.xz and
 # setup-yt-dlp-standalone.tar.xz, each holding its script and LICENSE with
 # no folder around them, and their SHA-256s in NAME.tar.xz.sha256. The
 # scripts in the repository say their version is 0.0.0-dev; the copies in
@@ -10,8 +10,10 @@ set -euo pipefail
 version=$1
 out=${2:-dist}
 
-if [[ ! $version =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?(\+[0-9A-Za-z.]+)?$ ]]; then
-    echo "error: $version isn't a version, such as 1.0.0, 1.0.0-beta.1 or 0.0.0-dev+1a2b3c4" >&2
+# A release, a pre-release with its commit, or a CI build with its commit.
+version_re='^([0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[1-9][0-9]*\+[0-9a-f]{7})?|0\.0\.0-dev\+[0-9a-f]{7})$'
+if [[ ! $version =~ $version_re ]]; then
+    echo "error: $version isn't a version, such as 1.0.0, 1.0.0-beta.1+1a2b3c4 or 0.0.0-dev+1a2b3c4" >&2
     exit 1
 fi
 
